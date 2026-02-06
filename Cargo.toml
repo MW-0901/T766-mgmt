@@ -1,0 +1,3 @@
+[workspace]
+members = ["T766-ControlServer"]
+resolver = "2"
