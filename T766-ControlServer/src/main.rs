@@ -15,44 +15,7 @@ enum Route {
     Home {},
     #[route("/logs/:time/:hostname")]
     Logs { time: String, hostname: String },
-    #[route("/tailscale")]
-    Tailscale {}
 }
-
-#[component]
-fn Tailscale() -> Element {
-    let status = use_resource(move || async move { tailscale_status().await });
-
-    rsx! {
-        div { class: "min-h-screen bg-neutral p-6",
-            div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
-                    Link {
-                        to: Route::Home {},
-                        class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
-                        "Home"
-                    }
-            }
-            div { class: "max-w-6xl mx-auto",
-                match &*status.read_unchecked() {
-                    Some(Ok(output)) => rsx! {
-                        pre { class: "bg-base-100 p-4 rounded-lg overflow-x-auto",
-                            "{output}"
-                        }
-                    },
-                    Some(Err(e)) => rsx! {
-                        div { class: "alert alert-error",
-                            "Error: {e}"
-                        }
-                    },
-                    None => rsx! {
-                        div { class: "loading loading-spinner loading-lg" }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[component]
 fn App() -> Element {
     rsx! {
@@ -72,13 +35,6 @@ fn Home() -> Element {
                 div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
                     h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
                         "Control Node"
-                    }
-                    Link {
-                        to: Route::Tailscale {},
-                        button {
-                            class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
-                            "Tailscale"
-                        }
                     }
                     button {
                         class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",

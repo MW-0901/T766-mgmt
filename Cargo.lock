@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "T766-ControlClient"
+version = "0.1.0"
+
+[[package]]
 name = "T766-ControlServer"
 version = "0.1.0"
 dependencies = [

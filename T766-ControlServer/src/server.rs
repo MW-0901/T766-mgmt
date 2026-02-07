@@ -169,15 +169,6 @@ pub async fn get_sync_table() -> Result<SyncTableData, ServerFnError> {
 }
 
 #[server]
-pub async fn tailscale_status() -> Result<String, ServerFnError> {
-    let output = Command::new("tailscale")
-        .arg("status")
-        .output()
-        .expect("Failed to get tailscale status");
-    Ok(String::from_utf8(output.stdout).unwrap())
-}
-
-#[server]
 pub async fn get_logs_for_interval(
     time: String,
     hostname: String,
