@@ -16,6 +16,7 @@ enum Route {
     #[route("/logs/:time/:hostname")]
     Logs { time: String, hostname: String },
 }
+
 #[component]
 fn App() -> Element {
     rsx! {
@@ -127,11 +128,7 @@ fn SyncCountdown() -> Element {
             } else {
                 60 - minute
             };
-            if mins_to_next == 1 {
-                countdown.set(format!("{} minutes to sync", mins_to_next));
-            } else {
-                countdown.set(format!("{} minutes to sync", mins_to_next));
-            }
+            countdown.set(format!("{} minutes to sync", mins_to_next));
             gloo_timers::future::sleep(std::time::Duration::from_secs(1)).await;
         }
     });
@@ -171,8 +168,8 @@ fn Logs(time: String, hostname: String) -> Element {
                 match &*log_data.read_unchecked() {
                     Some(Some(logs)) if !logs.is_empty() => rsx! {
                         div { class: "space-y-4",
-                            for (i, log) in logs.iter().enumerate() {
-                                LogEntry { log: log.clone(), index: i }
+                            for log in logs.iter() {
+                                LogEntry { log: log.clone() }
                             }
                         }
                     },
@@ -198,7 +195,7 @@ fn Logs(time: String, hostname: String) -> Element {
 }
 
 #[component]
-fn LogEntry(log: PuppetStatus, index: usize) -> Element {
+fn LogEntry(log: PuppetStatus) -> Element {
     let mut is_open = use_signal(|| false);
 
     rsx! {
@@ -221,45 +218,23 @@ fn LogEntry(log: PuppetStatus, index: usize) -> Element {
                     span { class: "text-xs text-neutral-content/50",
                         "Exit code: {log.exit_code}"
                     }
-                    if log.total_manifests > 0 {
-                        span { class: "text-xs text-neutral-content/50",
-                            "Manifests: {log.total_manifests}"
-                        }
-                    }
                 }
 
                 span { class: "text-neutral-content/40",
-                    if is_open() { "-" } else { "+" }
+                    if is_open() { "−" } else { "+" }
                 }
             }
 
             if is_open() {
                 div { class: "px-4 py-3 bg-neutral-content/5 border-t border-neutral-content/10",
-                    if !log.manifests_applied.is_empty() {
-                        div { class: "mb-3",
-                            div { class: "text-xs text-success/70 font-semibold mb-1", "Applied Manifests:" }
-                            for manifest in &log.manifests_applied {
-                                div { class: "text-xs text-neutral-content/60 ml-2", "APPLIED {manifest}" }
-                            }
-                        }
-                    }
-
-                    if !log.manifests_failed.is_empty() {
-                        div { class: "mb-3",
-                            div { class: "text-xs text-error/70 font-semibold mb-1", "Failed Manifests:" }
-                            for manifest in &log.manifests_failed {
-                                div { class: "text-xs text-neutral-content/60 ml-2", "FAILED {manifest}" }
-                            }
-                        }
-                    }
-
                     if !log.logs.is_empty() {
-                        div {
-                            div { class: "text-xs text-neutral-content/50 font-semibold mb-2", "Logs:" }
-                            pre {
-                                class: "text-xs text-neutral-content/70 bg-black/20 p-3 rounded overflow-x-auto font-mono whitespace-pre-wrap",
-                                "{log.logs}"
-                            }
+                        pre {
+                            class: "text-xs text-neutral-content/70 bg-black/20 p-3 rounded overflow-x-auto font-mono whitespace-pre-wrap",
+                            "{log.logs}"
+                        }
+                    } else {
+                        div { class: "text-xs text-neutral-content/40 italic",
+                            "No logs available"
                         }
                     }
                 }

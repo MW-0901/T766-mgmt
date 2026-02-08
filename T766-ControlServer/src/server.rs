@@ -4,8 +4,8 @@ use chrono::{Duration, NaiveDateTime};
 use dioxus::{CapturedError, prelude::*};
 use dioxus_fullstack::ByteStream;
 use once_cell::sync::Lazy;
+use redb::{Database, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
 use serde::{Deserialize, Serialize};
-use sled::Db;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
 use std::io::Read;
@@ -13,8 +13,16 @@ use std::process::Command;
 use std::sync::mpsc;
 use tar::Builder;
 
-#[allow(dead_code)]
-pub static DB: Lazy<Db> = Lazy::new(|| sled::open("cn-db").expect("Failed to open database"));
+const SYNC_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("puppet_sync");
+
+pub static DB: Lazy<Database> = Lazy::new(|| {
+    let path = if cfg!(test) {
+        "test-cn-db.redb"
+    } else {
+        "cn-db.redb"
+    };
+    Database::create(path).expect("Failed to create database")
+});
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PuppetStatus {
@@ -24,12 +32,6 @@ pub struct PuppetStatus {
     pub timestamp: String,
     #[serde(default)]
     pub display_timestamp: String,
-    #[serde(default)]
-    pub manifests_applied: Vec<String>,
-    #[serde(default)]
-    pub manifests_failed: Vec<String>,
-    #[serde(default)]
-    pub total_manifests: i32,
     #[serde(default)]
     pub logs: String,
 }
@@ -46,11 +48,12 @@ pub async fn handle_sync(
     hostname: String,
     status: String,
     exit_code: i32,
-    manifests_applied: Option<Vec<String>>,
-    manifests_failed: Option<Vec<String>>,
-    total_manifests: Option<i32>,
     logs: String,
 ) -> Result<(), ServerFnError> {
+    const MAX_KEY_SIZE: usize = 1_048_576;
+    const MAX_KEYS: usize = 500;
+    const KEYS_TO_REMOVE: usize = 100;
+
     let now = Local::now();
     let sortable_timestamp = now.format("%Y%m%d%H%M%S").to_string();
     let display_timestamp = now.format("%-I:%M %p %-m-%-d-%y").to_string();
@@ -61,40 +64,110 @@ pub async fn handle_sync(
         exit_code,
         timestamp: sortable_timestamp.clone(),
         display_timestamp: display_timestamp.clone(),
-        manifests_applied: manifests_applied.unwrap_or_default(),
-        manifests_failed: manifests_failed.unwrap_or_default(),
-        total_manifests: total_manifests.unwrap_or(0),
         logs: logs.clone(),
     };
 
     let json =
         serde_json::to_string(&puppet_status).map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    let key = format!("sync:{}:{}", sortable_timestamp, hostname);
-    DB.insert(key.as_bytes(), json.as_bytes())
+    if json.len() > MAX_KEY_SIZE {
+        return Err(ServerFnError::new(format!(
+            "Data too large: {} bytes exceeds {} byte limit",
+            json.len(),
+            MAX_KEY_SIZE
+        )));
+    }
+
+    let write_txn = DB
+        .begin_write()
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-    if !puppet_status.manifests_applied.is_empty() {
-        println!("Applied Manifests: {:?}", puppet_status.manifests_applied);
+    {
+        let table = write_txn
+            .open_table(SYNC_TABLE)
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+        let key_count = table.len().map_err(|e| ServerFnError::new(e.to_string()))?;
+
+        if key_count >= MAX_KEYS as u64 {
+            let mut keys_to_delete = Vec::new();
+            let mut iter = table
+                .iter()
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+            for _ in 0..KEYS_TO_REMOVE.min(key_count as usize) {
+                if let Some(item) = iter.next() {
+                    let (key, _) = item.map_err(|e| ServerFnError::new(e.to_string()))?;
+                    keys_to_delete.push(key.value().to_string());
+                }
+            }
+            drop(iter);
+            drop(table);
+
+            let mut table = write_txn
+                .open_table(SYNC_TABLE)
+                .map_err(|e| ServerFnError::new(e.to_string()))?;
+            for key in &keys_to_delete {
+                table
+                    .remove(key.as_str())
+                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+            }
+
+            println!(
+                "Storage limit reached ({} keys), removed {} oldest entries",
+                key_count,
+                keys_to_delete.len()
+            );
+        }
     }
 
-    if !puppet_status.manifests_failed.is_empty() {
-        println!("Failed Manifests: {:?}", puppet_status.manifests_failed);
+    {
+        let mut table = write_txn
+            .open_table(SYNC_TABLE)
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        let key = format!("sync:{}:{}", sortable_timestamp, hostname);
+        table
+            .insert(key.as_str(), json.as_bytes())
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
     }
+
+    write_txn
+        .commit()
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
 
     Ok(())
 }
 
 #[server]
 pub async fn get_sync_table() -> Result<SyncTableData, ServerFnError> {
-    let mut all_syncs: Vec<PuppetStatus> = Vec::new();
+    #[derive(Debug, Clone)]
+    struct SyncTableEntry {
+        hostname: String,
+        status: String,
+        timestamp: String,
+        display_timestamp: String,
+    }
+
+    let mut all_syncs: Vec<SyncTableEntry> = Vec::new();
     let mut hostnames_set = std::collections::HashSet::new();
 
-    for item in DB.scan_prefix(b"sync:") {
-        let (key, value) = item.map_err(|e| ServerFnError::new(e.to_string()))?;
+    let read_txn = DB
+        .begin_read()
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    let table = read_txn
+        .open_table(SYNC_TABLE)
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-        let value_str = String::from_utf8_lossy(&value);
-        let mut sync: PuppetStatus = match serde_json::from_str(&value_str) {
+    let iter = table
+        .iter()
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    for item in iter {
+        let (_key, value) = item.map_err(|e| ServerFnError::new(e.to_string()))?;
+        let value_bytes = value.value();
+        let value_str = String::from_utf8_lossy(value_bytes);
+
+        let sync: PuppetStatus = match serde_json::from_str(&value_str) {
             Ok(s) => s,
             Err(e) => {
                 println!("Failed to deserialize sync data: {}", e);
@@ -102,15 +175,23 @@ pub async fn get_sync_table() -> Result<SyncTableData, ServerFnError> {
             }
         };
 
-        if sync.display_timestamp.is_empty() {
-            sync.display_timestamp = sync.timestamp.clone();
-        }
+        let display_timestamp = if sync.display_timestamp.is_empty() {
+            sync.timestamp.clone()
+        } else {
+            sync.display_timestamp.clone()
+        };
 
         hostnames_set.insert(sync.hostname.clone());
-        all_syncs.push(sync);
+
+        all_syncs.push(SyncTableEntry {
+            hostname: sync.hostname,
+            status: sync.status,
+            timestamp: sync.timestamp,
+            display_timestamp,
+        });
     }
 
-    let mut interval_map: BTreeMap<(i64, String), PuppetStatus> = BTreeMap::new();
+    let mut interval_map: BTreeMap<(i64, String), SyncTableEntry> = BTreeMap::new();
 
     for sync in all_syncs {
         let dt = match NaiveDateTime::parse_from_str(&sync.timestamp, "%Y%m%d%H%M%S") {
@@ -173,12 +254,24 @@ pub async fn get_logs_for_interval(
     time: String,
     hostname: String,
 ) -> Result<Vec<PuppetStatus>, ServerFnError> {
-    let mut all_syncs: Vec<PuppetStatus> = Vec::new();
+    let mut interval_syncs: Vec<PuppetStatus> = Vec::new();
 
-    for item in DB.scan_prefix(b"sync:") {
+    let read_txn = DB
+        .begin_read()
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    let table = read_txn
+        .open_table(SYNC_TABLE)
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let iter = table
+        .iter()
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    for item in iter {
         let (_, value) = item.map_err(|e| ServerFnError::new(e.to_string()))?;
+        let value_bytes = value.value();
+        let value_str = String::from_utf8_lossy(value_bytes);
 
-        let value_str = String::from_utf8_lossy(&value);
         let mut sync: PuppetStatus = match serde_json::from_str(&value_str) {
             Ok(s) => s,
             Err(e) => {
@@ -187,18 +280,14 @@ pub async fn get_logs_for_interval(
             }
         };
 
+        if sync.hostname != hostname {
+            continue;
+        }
+
         if sync.display_timestamp.is_empty() {
             sync.display_timestamp = sync.timestamp.clone();
         }
 
-        if sync.hostname == hostname {
-            all_syncs.push(sync);
-        }
-    }
-
-    let mut interval_syncs: Vec<PuppetStatus> = Vec::new();
-
-    for sync in all_syncs {
         let dt = match NaiveDateTime::parse_from_str(&sync.timestamp, "%Y%m%d%H%M%S") {
             Ok(d) => d,
             Err(_) => continue,
@@ -222,28 +311,28 @@ pub async fn get_logs_for_interval(
     Ok(interval_syncs)
 }
 
-struct ChannelWriter {
-    sender: std::sync::mpsc::SyncSender<Vec<u8>>,
-}
-
-impl std::io::Write for ChannelWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.sender
-            .send(buf.to_vec())
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Channel closed"))?;
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 #[get("/manifests")]
 pub async fn get_manifests() -> Result<ByteStream, ServerFnError> {
     let (send, recv) = mpsc::sync_channel::<Vec<u8>>(8);
 
     std::thread::spawn(move || {
+        struct ChannelWriter {
+            sender: std::sync::mpsc::SyncSender<Vec<u8>>,
+        }
+
+        impl std::io::Write for ChannelWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.sender.send(buf.to_vec()).map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Channel closed")
+                })?;
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
         let writer = ChannelWriter { sender: send };
         let mut archive = Builder::new(writer);
 
@@ -313,4 +402,101 @@ pub async fn get_data_file(filename: String) -> Result<ByteStream, ServerFnError
             }
         }
     }))
+}
+
+#[cfg(test)]
+#[cfg(feature = "server")]
+mod tests {
+    use super::*;
+    use redb::{ReadableDatabase, ReadableTableMetadata};
+    use std::fs;
+
+    #[test]
+    fn test_disk_flooding() {
+        let _ = fs::remove_file("test-cn-db.redb");
+
+        let large_log = "X".repeat(1_000_000);
+
+        for i in 0..5000 {
+            let now = chrono::Local::now();
+            let display_timestamp = now.format("%-I:%M %p %-m-%-d-%y").to_string();
+
+            let puppet_status = PuppetStatus {
+                hostname: format!("host-{}", i % 10),
+                status: if i % 5 == 0 {
+                    "error".to_string()
+                } else {
+                    "success".to_string()
+                },
+                exit_code: 0,
+                timestamp: format!("{:014}", 20240101000000u64 + i as u64),
+                display_timestamp,
+                logs: large_log.clone(),
+            };
+
+            let json = serde_json::to_string(&puppet_status).unwrap();
+            let write_txn = DB.begin_write().unwrap();
+
+            {
+                let mut table = write_txn.open_table(SYNC_TABLE).unwrap();
+                let key_count = table.len().unwrap();
+
+                if key_count >= 500 {
+                    let mut keys_to_delete = Vec::new();
+                    let mut iter = table.iter().unwrap();
+
+                    for _ in 0..100 {
+                        if let Some(item) = iter.next() {
+                            let (key, _) = item.unwrap();
+                            keys_to_delete.push(key.value().to_string());
+                        }
+                    }
+                    drop(iter);
+
+                    for key in &keys_to_delete {
+                        table.remove(key.as_str()).unwrap();
+                    }
+                }
+
+                let key = format!(
+                    "sync:{}:{}",
+                    puppet_status.timestamp, puppet_status.hostname
+                );
+                table.insert(key.as_str(), json.as_bytes()).unwrap();
+            }
+
+            write_txn.commit().unwrap();
+
+            if i % 500 == 0 {
+                let read_txn = DB.begin_read().unwrap();
+                let table = read_txn.open_table(SYNC_TABLE).unwrap();
+                let count = table.len().unwrap();
+
+                let size = fs::metadata("test-cn-db.redb")
+                    .map(|m| m.len() as f64 / 1_048_576.0)
+                    .unwrap_or(0.0);
+                println!("{} insertions: {:.2} MB, {} keys in DB", i, size, count);
+            }
+        }
+
+        let read_txn = DB.begin_read().unwrap();
+        let table = read_txn.open_table(SYNC_TABLE).unwrap();
+        let final_count = table.len().unwrap();
+
+        let final_size = fs::metadata("test-cn-db.redb")
+            .map(|m| m.len() as f64 / 1_048_576.0)
+            .unwrap_or(0.0);
+
+        println!("\nFinal: {:.2} MB, {} keys in DB", final_size, final_count);
+        println!("Expected max keys: 500");
+
+        assert!(
+            final_count <= 500,
+            "Key count {} exceeds maximum 500",
+            final_count
+        );
+        assert!(final_size < 800.0, "Database grew to {:.2} MB", final_size);
+
+        let _ = fs::remove_file("test-cn-db.redb");
+    }
 }

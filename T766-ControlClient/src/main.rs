@@ -1,3 +1,10 @@
+use crate::puppet::PuppetClient;
+
+mod client;
+mod host;
+mod puppet;
+
 fn main() {
-    println!("Hello, world!");
+    let client = PuppetClient::new();
+    println!("{:?}", client.apply());
 }
