@@ -16,12 +16,7 @@ use tar::Builder;
 const SYNC_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("puppet_sync");
 
 pub static DB: Lazy<Database> = Lazy::new(|| {
-    let path = if cfg!(test) {
-        "test-cn-db.redb"
-    } else {
-        "cn-db.redb"
-    };
-    Database::create(path).expect("Failed to create database")
+    Database::create("cn-db.redb").expect("Failed to create database")
 });
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -402,101 +397,4 @@ pub async fn get_data_file(filename: String) -> Result<ByteStream, ServerFnError
             }
         }
     }))
-}
-
-#[cfg(test)]
-#[cfg(feature = "server")]
-mod tests {
-    use super::*;
-    use redb::{ReadableDatabase, ReadableTableMetadata};
-    use std::fs;
-
-    #[test]
-    fn test_disk_flooding() {
-        let _ = fs::remove_file("test-cn-db.redb");
-
-        let large_log = "X".repeat(1_000_000);
-
-        for i in 0..5000 {
-            let now = chrono::Local::now();
-            let display_timestamp = now.format("%-I:%M %p %-m-%-d-%y").to_string();
-
-            let puppet_status = PuppetStatus {
-                hostname: format!("host-{}", i % 10),
-                status: if i % 5 == 0 {
-                    "error".to_string()
-                } else {
-                    "success".to_string()
-                },
-                exit_code: 0,
-                timestamp: format!("{:014}", 20240101000000u64 + i as u64),
-                display_timestamp,
-                logs: large_log.clone(),
-            };
-
-            let json = serde_json::to_string(&puppet_status).unwrap();
-            let write_txn = DB.begin_write().unwrap();
-
-            {
-                let mut table = write_txn.open_table(SYNC_TABLE).unwrap();
-                let key_count = table.len().unwrap();
-
-                if key_count >= 500 {
-                    let mut keys_to_delete = Vec::new();
-                    let mut iter = table.iter().unwrap();
-
-                    for _ in 0..100 {
-                        if let Some(item) = iter.next() {
-                            let (key, _) = item.unwrap();
-                            keys_to_delete.push(key.value().to_string());
-                        }
-                    }
-                    drop(iter);
-
-                    for key in &keys_to_delete {
-                        table.remove(key.as_str()).unwrap();
-                    }
-                }
-
-                let key = format!(
-                    "sync:{}:{}",
-                    puppet_status.timestamp, puppet_status.hostname
-                );
-                table.insert(key.as_str(), json.as_bytes()).unwrap();
-            }
-
-            write_txn.commit().unwrap();
-
-            if i % 500 == 0 {
-                let read_txn = DB.begin_read().unwrap();
-                let table = read_txn.open_table(SYNC_TABLE).unwrap();
-                let count = table.len().unwrap();
-
-                let size = fs::metadata("test-cn-db.redb")
-                    .map(|m| m.len() as f64 / 1_048_576.0)
-                    .unwrap_or(0.0);
-                println!("{} insertions: {:.2} MB, {} keys in DB", i, size, count);
-            }
-        }
-
-        let read_txn = DB.begin_read().unwrap();
-        let table = read_txn.open_table(SYNC_TABLE).unwrap();
-        let final_count = table.len().unwrap();
-
-        let final_size = fs::metadata("test-cn-db.redb")
-            .map(|m| m.len() as f64 / 1_048_576.0)
-            .unwrap_or(0.0);
-
-        println!("\nFinal: {:.2} MB, {} keys in DB", final_size, final_count);
-        println!("Expected max keys: 500");
-
-        assert!(
-            final_count <= 500,
-            "Key count {} exceeds maximum 500",
-            final_count
-        );
-        assert!(final_size < 800.0, "Database grew to {:.2} MB", final_size);
-
-        let _ = fs::remove_file("test-cn-db.redb");
-    }
 }

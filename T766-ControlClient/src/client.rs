@@ -1,6 +1,7 @@
 use std::io::Cursor;
 use tar::Archive;
 use tempfile::TempDir;
+use crate::puppet::ApplyResult;
 
 static URL_ONE: &'static str = "http://100.82.13.20:5000"; // Will be the local pi
 static URL_TWO: &'static str = "http://100.82.13.20:5000"; // Will be the VPS
@@ -50,5 +51,9 @@ impl Client {
         archive.unpack(temp_dir.path()).map_err(|e| e.to_string())?;
 
         Ok(temp_dir)
+    }
+
+    pub fn send_status(&self, status: ApplyResult) {
+        
     }
 }
