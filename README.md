@@ -10,5 +10,4 @@ The directory `T766-ControlServer` contains:
 
 ## Usage
 
-- You can use `nix run` to build and run the development server, or `nix run .#serve` for a proper release bundle for prod
-- If you do not want to use nix, you can manually install the dioxus CLI and run `dx serve --release --port 8000` from the T766-ControlServer directory for a development environment.
+Run `make rpi_build` to build the control server for a raspberry pi. It will output a `target/dx/T766-ControlServer/release/web/` folder containing a binary and the static assets it requires!
