@@ -2,9 +2,25 @@
 name = "T766-ControlClient"
 version = "0.1.0"
 edition = "2024"
+authors = ["Mark Wilson"]
+license = "MIT"
+description = "Agent to manage laptops via puppet. Must be paired w/ the accompanying control server."
 
 [dependencies]
 minreq = { version = "2.14.1", features = ["https-rustls"] }
 tempfile = "3.24.0"
 tar = "0.4.44"
 gethostname = "1.1.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+chrono = "0.4.43"
+log = "0.4.29"
+env_logger = "0.11.8"
+
+[package.metadata.msi]
+product-name = "Puppet Sync"
+extra-wix-files = ["installer/autorun.wxs"]
+
+[[bin]]
+name = "T766-ControlClient"
+path = "src/main.rs"

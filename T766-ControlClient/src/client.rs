@@ -1,6 +1,8 @@
 use std::io::Cursor;
 use tar::Archive;
 use tempfile::TempDir;
+use serde_json;
+use log::error;
 use crate::puppet::ApplyResult;
 
 static URL_ONE: &'static str = "http://100.82.13.20:5000"; // Will be the local pi
@@ -22,7 +24,7 @@ impl Client {
         {
             Ok(response) => return Ok(response.into_bytes()),
             Err(err) => {
-                eprintln!("Local control node connection failed: {}", err);
+                error!("Local control node connection failed: {}", err);
             }
         }
 
@@ -34,7 +36,7 @@ impl Client {
         match response {
             Ok(response) => Ok(response.into_bytes()),
             Err(err) => {
-                eprintln!("VPS connection failed: {}", err);
+                error!("VPS connection failed: {}", err);
                 Err(err.to_string())
             }
         }
@@ -53,7 +55,35 @@ impl Client {
         Ok(temp_dir)
     }
 
-    pub fn send_status(&self, status: ApplyResult) {
-        
+    pub fn send_status(&self, status: ApplyResult) -> Result<String, String> {
+        let url_one = format!("{}/puppet-sync", URL_ONE);
+        let url_two = format!("{}/puppet-sync", URL_TWO);
+        let body = serde_json::to_string(&status)
+            .map_err(|e| e.to_string())?;
+        match minreq::post(&url_one)
+            .with_header("Accept-Encoding", "identity")
+            .with_timeout(20)
+            .with_body(body.clone())
+            .send()
+        {
+            Ok(response) => return Ok(String::from_utf8_lossy(&response.into_bytes()).into_owned()),
+            Err(err) => {
+                error!("Local control node connection failed: {}", err);
+            }
+        }
+
+        let response = minreq::post(&url_two)
+            .with_header("Accept-Encoding", "identity")
+            .with_timeout(20)
+            .with_body(body)
+            .send();
+
+        match response {
+            Ok(response) => Ok(String::from_utf8_lossy(&response.into_bytes()).into_owned()),
+            Err(err) => {
+                error!("VPS connection failed: {}", err);
+                Err(err.to_string())
+            }
+        }
     }
 }

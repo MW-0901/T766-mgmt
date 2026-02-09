@@ -1,16 +1,17 @@
 use crate::client::Client;
 use crate::host::{hostname, os};
 use std::process::Command;
+use serde::Serialize;
 
 pub struct PuppetClient {
     client: Client,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct ApplyResult {
     hostname: String,
     status: String,
-    exit_code: String,
+    exit_code: i32,
     logs: String,
 }
 
@@ -21,10 +22,12 @@ impl PuppetClient {
         }
     }
 
-    pub fn apply(&self) -> Result<ApplyResult, String> {
+    pub fn apply(&self) -> Result<String, String> {
         let dir = self.client.manifests()?;
         let dir_name = dir.path().to_str().unwrap();
-        Ok(self.apply_dir(dir_name))
+        let result = self.apply_dir(dir_name);
+        let resp = self.client.send_status(result)?;
+        Ok(resp)
     }
 
     fn apply_dir(&self, dir_name: &str) -> ApplyResult {
@@ -47,7 +50,7 @@ impl PuppetClient {
             } else {
                 "failure".to_string()
             },
-            exit_code: result.status.to_string(),
+            exit_code: result.status.code().unwrap_or(-1),
             logs: String::from_utf8_lossy(&result.stdout).to_string(),
         }
     }
