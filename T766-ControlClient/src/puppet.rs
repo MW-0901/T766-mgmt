@@ -29,29 +29,68 @@ impl PuppetClient {
         let resp = self.client.send_status(result)?;
         Ok(resp)
     }
-
     fn apply_dir(&self, dir_name: &str) -> ApplyResult {
-        let cmd: &str;
-        if os() == "windows" {
-            cmd = "puppet.bat";
+        let (cmd, args): (&str, Vec<&str>) = if os() == "windows" {
+            (
+                "cmd",
+                vec![
+                    "/C",
+                    "puppet",
+                    "apply",
+                    "--color=false",
+                    dir_name,
+                ],
+            )
         } else {
-            cmd = "puppet";
+            (
+                "puppet",
+                vec![
+                    "apply",
+                    "--color=false",
+                    dir_name,
+                ],
+            )
+        };
+
+        let mut command = Command::new(cmd);
+        command.args(&args);
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            use winapi::um::winbase::{
+                CREATE_NEW_PROCESS_GROUP,
+                CREATE_NO_WINDOW,
+            };
+
+            command.creation_flags(
+                CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+            );
         }
-        let result = Command::new(cmd)
-            .arg("apply")
-            .arg("--color=false")
-            .arg(dir_name)
+
+        let result = command
             .output()
-            .expect(format!("Failed to run: 'puppet apply {}'", dir_name).as_str());
+            .expect(format!("Failed to run puppet apply {}", dir_name).as_str());
+
+        let logs = format!(
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr),
+        );
+
+        let exit_code = result.status.code().unwrap_or(-1);
+
         ApplyResult {
             hostname: hostname(),
             status: if result.status.success() {
                 "success".to_string()
+            } else if exit_code == -1 {
+                "interrupted".to_string()
             } else {
                 "failure".to_string()
             },
-            exit_code: result.status.code().unwrap_or(-1),
-            logs: String::from_utf8_lossy(&result.stdout).to_string(),
+            exit_code,
+            logs,
         }
     }
 }
