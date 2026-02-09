@@ -22,3 +22,6 @@ agent:
 	cargo wix -p T766-ControlClient \
 		--bin-path "C:\Program Files (x86)\WiX Toolset v3.11\bin" \
 		--nocapture
+
+clean:
+	cargo clean
