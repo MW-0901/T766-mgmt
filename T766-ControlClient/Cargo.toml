@@ -2,7 +2,7 @@
 name = "T766-ControlClient"
 version = "0.1.0"
 edition = "2024"
-authors = ["Mark Wilson"]
+authors = ["Team 766"]
 license = "MIT"
 description = "Agent to manage laptops via puppet. Must be paired w/ the accompanying control server."
 
