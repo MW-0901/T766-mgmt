@@ -62,7 +62,7 @@
         Id='*'
         Name='T766-ControlClient'
         UpgradeCode='7B7C94A9-DFE5-4034-816B-27C6EA09BFB3'
-        Manufacturer='Mark Wilson'
+        Manufacturer='Team 766'
         Language='1033'
         Codepage='1252'
         Version='$(var.Version)'>
@@ -70,7 +70,7 @@
         <Package Id='*'
             Keywords='Installer'
             Description='Agent to manage laptops via puppet. Must be paired w/ the accompanying control server.'
-            Manufacturer='Mark Wilson'
+            Manufacturer='Team 766'
             InstallerVersion='450'
             Languages='1033'
             Compressed='yes'
