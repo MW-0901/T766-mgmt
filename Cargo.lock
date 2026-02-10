@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "T766-CheckinApp"
+version = "0.1.0"
+dependencies = [
+ "rdev",
+ "slint",
+ "slint-build",
+]
+
+[[package]]
 name = "T766-ControlClient"
 version = "0.1.0"
 dependencies = [
@@ -1070,15 +1079,6 @@ checksum = "f1f927b07c74ba84c7e5fe4db2baeb3e996ab2688992e39ac68ce3220a677c7e"
 dependencies = [
  "base64",
  "encoding_rs",
-]
-
-[[package]]
-name = "checkin"
-version = "0.1.0"
-dependencies = [
- "rdev",
- "slint",
- "slint-build",
 ]
 
 [[package]]
