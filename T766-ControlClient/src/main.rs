@@ -1,11 +1,14 @@
-#![windows_subsystem = "windows"]
+#![cfg_attr(all(windows, not(feature = "run")), windows_subsystem = "windows")]
 use crate::puppet::PuppetClient;
 
 mod client;
 mod host;
 mod puppet;
+mod config;
+
 use chrono::{Local, Timelike};
 use std::{thread};
+use std::process::exit;
 use env_logger;
 use log::{info, error};
 
@@ -49,6 +52,11 @@ fn main() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
         .init();
+    if cfg!(feature = "run") {
+        println!("Running manual sync...");
+        run_sync(&PuppetClient::new());
+        exit(0);
+    }
     let client = PuppetClient::new();
     loop {
         next_half_hour();

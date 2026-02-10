@@ -1,0 +1,24 @@
+import { Button, VerticalBox, StandardTableView, Slider, LineEdit } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    full-screen: true;
+    in-out property <string> counter: "";
+    in-out property <string> id;
+    callback submit-id();
+
+    VerticalBox {
+        alignment: center;
+        Text {
+            text: "Type your ID here:";
+        }
+        LineEdit {
+            text <=> id;
+        }
+        Button {
+            text: "Submit";
+            clicked => {
+                root.submit-id();
+            }
+        }
+    }
+}

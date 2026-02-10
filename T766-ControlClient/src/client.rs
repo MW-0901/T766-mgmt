@@ -1,13 +1,16 @@
+use std::alloc::Layout;
 use std::io::Cursor;
 use tar::Archive;
 use tempfile::TempDir;
 use serde_json;
 use log::error;
+use std::sync::LazyLock;
+use crate::config::{load_config, ClientConfig};
 use crate::puppet::ApplyResult;
 
-static URL_ONE: &'static str = "http://100.82.13.20:5000"; // Will be the local pi
-static URL_TWO: &'static str = "http://100.82.13.20:5000"; // Will be the VPS
-
+static CONFIG: LazyLock<ClientConfig> = LazyLock::new(|| {
+    load_config().expect("failed to load config")
+});
 pub struct Client {}
 impl Client {
     pub fn new() -> Self {
@@ -15,8 +18,8 @@ impl Client {
     }
 
     fn req_manifests(&self) -> Result<Vec<u8>, String> {
-        let url_one = format!("{}/manifests", URL_ONE);
-        let url_two = format!("{}/manifests", URL_TWO);
+        let url_one = format!("{}/manifests", CONFIG.primary_url);
+        let url_two = format!("{}/manifests", CONFIG.fallback_url);
         match minreq::get(&url_one)
             .with_header("Accept-Encoding", "identity")
             .with_timeout(20)
@@ -56,8 +59,8 @@ impl Client {
     }
 
     pub fn send_status(&self, status: ApplyResult) -> Result<String, String> {
-        let url_one = format!("{}/puppet-sync", URL_ONE);
-        let url_two = format!("{}/puppet-sync", URL_TWO);
+        let url_one = format!("{}/puppet-sync", CONFIG.primary_url);
+        let url_two = format!("{}/puppet-sync", CONFIG.fallback_url);
         let body = serde_json::to_string(&status)
             .map_err(|e| e.to_string())?;
         match minreq::post(&url_one)
