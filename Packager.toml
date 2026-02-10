@@ -1,0 +1,36 @@
+name = "T766-ControlClient"
+product-name = "T766 Control System"
+version = "0.1.0"
+identifier = "com.t766.control"
+publisher = "T766"
+before-packaging-command = "cargo build --release --bin T766-ControlClient --bin T766-CheckinApp"
+
+binaries = [
+    { path = "target/release/T766-ControlClient.exe", main = true },
+    { path = "target/release/T766-CheckinApp.exe", main = false }
+]
+
+resources = [
+    "T766-ControlClient/settings.toml"
+]
+
+[nsis]
+preinstall-section = """
+Section "AddToStartup"
+  CreateShortcut "$SMSTARTUP\\T766 Control Client.lnk" "$INSTDIR\\T766-ControlClient.exe"
+  CreateShortcut "$SMSTARTUP\\T766 Checkin App.lnk" "$INSTDIR\\T766-CheckinApp.exe"
+
+  CreateDirectory "$LOCALAPPDATA\\T766 Control System"
+  IfFileExists "$LOCALAPPDATA\\T766 Control System\\settings.toml" +2 0
+  CopyFiles "$INSTDIR\\settings.toml" "$LOCALAPPDATA\\T766 Control System\\settings.toml"
+SectionEnd
+
+Section "un.RemoveFromStartup"
+  Delete "$SMSTARTUP\\T766 Control Client.lnk"
+  Delete "$SMSTARTUP\\T766 Checkin App.lnk"
+
+  MessageBox MB_YESNO "Do you want to remove application settings?" IDNO +3
+  Delete "$LOCALAPPDATA\\T766 Control System\\settings.toml"
+  RMDir "$LOCALAPPDATA\\T766 Control System"
+SectionEnd
+"""

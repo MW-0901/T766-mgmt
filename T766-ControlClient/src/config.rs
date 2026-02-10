@@ -12,9 +12,9 @@ pub struct ClientConfig {
 
 fn conf_path() -> PathBuf {
     if os() == "windows" {
-        PathBuf::from(r"C:\Program Files\T766-ControlClient\settings.toml")
+        PathBuf::from(r"C:\Users\team766\AppData\Local\T766 Control System\settings.toml")
     } else {
-        PathBuf::from("/etc/t766/client.toml")
+        PathBuf::from("/etc/t766/settings.toml")
     }
 }
 pub fn load_config() -> Result<ClientConfig, String> {

@@ -1,4 +1,3 @@
-use std::alloc::Layout;
 use std::io::Cursor;
 use tar::Archive;
 use tempfile::TempDir;
