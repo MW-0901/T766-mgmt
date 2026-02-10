@@ -1,2 +1,2 @@
-primary_url = "http://127.0.0.1:5000"
+primary_url = "http://100.82.13.20:5000"
 fallback_url = "https://example.com:5000"

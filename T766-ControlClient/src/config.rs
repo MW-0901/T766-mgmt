@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use toml;
-use crate::host::os;
+use crate::host::{os, user};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -11,8 +11,9 @@ pub struct ClientConfig {
 }
 
 fn conf_path() -> PathBuf {
+    let user = user();
     if os() == "windows" {
-        PathBuf::from(r"C:\Users\team766\AppData\Local\T766 Control System\settings.toml")
+        PathBuf::from(format!(r"C:\Users\{user}\AppData\Local\T766 Control System\settings.toml"))
     } else {
         PathBuf::from("/etc/t766/settings.toml")
     }

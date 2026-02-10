@@ -17,8 +17,8 @@ impl Client {
     }
 
     fn req_manifests(&self) -> Result<Vec<u8>, String> {
-        let url_one = format!("{}/manifests", CONFIG.primary_url);
-        let url_two = format!("{}/manifests", CONFIG.fallback_url);
+        let url_one = format!("{}manifests", CONFIG.primary_url);
+        let url_two = format!("{}manifests", CONFIG.fallback_url);
         match minreq::get(&url_one)
             .with_header("Accept-Encoding", "identity")
             .with_timeout(20)
@@ -46,20 +46,16 @@ impl Client {
 
     pub fn manifests(&self) -> Result<TempDir, String> {
         let tarball = self.req_manifests()?;
-
         let temp_dir = TempDir::new().map_err(|e| e.to_string())?;
-
         let cursor = Cursor::new(tarball);
         let mut archive = Archive::new(cursor);
-
         archive.unpack(temp_dir.path()).map_err(|e| e.to_string())?;
-
         Ok(temp_dir)
     }
 
     pub fn send_status(&self, status: ApplyResult) -> Result<String, String> {
-        let url_one = format!("{}/puppet-sync", CONFIG.primary_url);
-        let url_two = format!("{}/puppet-sync", CONFIG.fallback_url);
+        let url_one = format!("{}puppet-sync", CONFIG.primary_url);
+        let url_two = format!("{}puppet-sync", CONFIG.fallback_url);
         let body = serde_json::to_string(&status)
             .map_err(|e| e.to_string())?;
         match minreq::post(&url_one)
