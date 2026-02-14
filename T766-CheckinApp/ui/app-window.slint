@@ -20,5 +20,14 @@ export component AppWindow inherits Window {
                 root.submit-id();
             }
         }
+        error-message := Text {
+            text: "Error: Malformed ID";
+            visible: false;
+            color: #ed2409;
+        }
+    }
+    callback show-error();
+    show-error => {
+        error-message.visible = true;
     }
 }

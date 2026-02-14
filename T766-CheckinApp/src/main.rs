@@ -8,8 +8,21 @@ use chrono::Local;
 
 slint::include_modules!();
 
-fn submit_id(id: String) {
+fn submit_id(ui: &AppWindow, id: String) -> bool {
     println!("Submitted: {}", id);
+    let mut valid = true;
+    for c in id.chars() {
+        if !c.is_digit(10) {
+            valid = false;
+        }
+    }
+    if id.len() != 6 {
+        valid = false;
+    }
+    if !valid {
+        ui.invoke_show_error();
+        return false
+    }
 
     let path = if cfg!(windows) {
         let user = std::env::var("USERNAME").unwrap_or_else(|_| "Default".to_string());
@@ -28,6 +41,7 @@ fn submit_id(id: String) {
     {
         let _ = file.write_all(entry.as_bytes());
     }
+    true
 }
 fn main() -> Result<(), Box<dyn Error>> {
     std::env::set_var("SLINT_BACKEND", "winit-femtovg");
@@ -46,8 +60,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         move || {
             let ui = ui_handle.unwrap();
             let id = ui.get_id().to_string();
-            submit_id(id);
-            ui.window().hide().unwrap();
+            if submit_id(&ui, id) {
+                ui.window().hide().unwrap();
+            }
         }
     });
 
