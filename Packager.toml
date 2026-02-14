@@ -11,26 +11,31 @@ binaries = [
 ]
 
 resources = [
-    "T766-ControlClient/settings.toml"
+    "settings.toml",
+    "checkin-logs"
 ]
 
 [nsis]
 preinstall-section = """
+!define REG_RUN_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+
 Section "AddToStartup"
-  CreateShortcut "$SMSTARTUP\\T766 Control Client.lnk" "$INSTDIR\\T766-ControlClient.exe"
-  CreateShortcut "$SMSTARTUP\\T766 Checkin App.lnk" "$INSTDIR\\T766-CheckinApp.exe"
+  WriteRegStr HKCU "${REG_RUN_KEY}" "T766 checkin app" '"$INSTDIR\\T766-CheckinApp.exe"'
+  WriteRegStr HKCU "${REG_RUN_KEY}" "T766 control client" '"$INSTDIR\\T766-ControlClient.exe"'
 
   CreateDirectory "$LOCALAPPDATA\\T766 Control System"
-  IfFileExists "$LOCALAPPDATA\\T766 Control System\\settings.toml" +2 0
+  IfFileExists "$LOCALAPPDATA\\T766 Control System\\settings.toml" +3 0
   CopyFiles "$INSTDIR\\settings.toml" "$LOCALAPPDATA\\T766 Control System\\settings.toml"
+  CopyFiles "$INSTDIR\\checkin-logs" "$LOCALAPPDATA\\T766 Control System\\checkin-logs"
 SectionEnd
 
 Section "un.RemoveFromStartup"
-  Delete "$SMSTARTUP\\T766 Control Client.lnk"
-  Delete "$SMSTARTUP\\T766 Checkin App.lnk"
+  DeleteRegValue HKCU "${REG_RUN_KEY}" "T766 checkin app"
+  DeleteRegValue HKCU "${REG_RUN_KEY}" "T766 control client"
 
-  MessageBox MB_YESNO "Do you want to remove application settings?" IDNO +3
+  MessageBox MB_YESNO "Do you want to remove application settings & logs?" IDNO +4
   Delete "$LOCALAPPDATA\\T766 Control System\\settings.toml"
+  Delete "$LOCALAPPDATA\\T766 Control System\\checkin-logs"
   RMDir "$LOCALAPPDATA\\T766 Control System"
 SectionEnd
 """

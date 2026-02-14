@@ -2,7 +2,7 @@ use std::io::Cursor;
 use tar::Archive;
 use tempfile::TempDir;
 use serde_json;
-use log::error;
+use log::{error, info};
 use std::sync::LazyLock;
 use crate::config::{load_config, ClientConfig};
 use crate::puppet::ApplyResult;
@@ -19,24 +19,38 @@ impl Client {
     fn req_manifests(&self) -> Result<Vec<u8>, String> {
         let url_one = format!("{}manifests", CONFIG.primary_url);
         let url_two = format!("{}manifests", CONFIG.fallback_url);
+        info!("{}", url_one);
         match minreq::get(&url_one)
             .with_header("Accept-Encoding", "identity")
             .with_timeout(20)
             .send()
         {
-            Ok(response) => return Ok(response.into_bytes()),
+            Ok(response) => {
+                if response.status_code != 200 {
+                    error!("Non-200 status code returned: {}", response.status_code);
+                    return Err(format!("status code {} found", response.status_code));
+                }
+                return Ok(response.into_bytes())
+            },
             Err(err) => {
                 error!("Local control node connection failed: {}", err);
             }
         }
 
+        info!("Falling back to remote control node...");
         let response = minreq::get(&url_two)
             .with_header("Accept-Encoding", "identity")
             .with_timeout(20)
             .send();
 
         match response {
-            Ok(response) => Ok(response.into_bytes()),
+            Ok(response) => {
+                if response.status_code != 200 {
+                    error!("Non-200 status code returned: {}", response.status_code);
+                    return Err(format!("status code {} found", response.status_code));
+                }
+                Ok(response.into_bytes())
+            },
             Err(err) => {
                 error!("VPS connection failed: {}", err);
                 Err(err.to_string())
@@ -47,10 +61,14 @@ impl Client {
     pub fn manifests(&self) -> Result<TempDir, String> {
         let tarball = self.req_manifests()?;
         let temp_dir = TempDir::new().map_err(|e| e.to_string())?;
-        let cursor = Cursor::new(tarball);
+        let cursor = Cursor::new(&tarball);
         let mut archive = Archive::new(cursor);
-        archive.unpack(temp_dir.path()).map_err(|e| e.to_string())?;
-        Ok(temp_dir)
+        match archive.unpack(temp_dir.path()).map_err(|e| e.to_string()) {
+            Ok(_) => Ok(temp_dir),
+            Err(err) => {
+                Err(format!("Error opening tarball: {err}\nServer response: {:?}", String::from_utf8_lossy(&tarball)))
+            }
+        }
     }
 
     pub fn send_status(&self, status: ApplyResult) -> Result<String, String> {

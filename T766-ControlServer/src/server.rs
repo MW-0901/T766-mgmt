@@ -26,9 +26,9 @@ pub struct PuppetStatus {
     pub exit_code: i32,
     pub timestamp: String,
     #[serde(default)]
-    pub display_timestamp: String,
-    #[serde(default)]
     pub logs: String,
+    #[serde(default)]
+    pub checkin_logs: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -44,22 +44,22 @@ pub async fn handle_sync(
     status: String,
     exit_code: i32,
     logs: String,
+    checkin_logs: Vec<String>,
 ) -> Result<(), ServerFnError> {
     const MAX_KEY_SIZE: usize = 1_048_576;
     const MAX_KEYS: usize = 500;
     const KEYS_TO_REMOVE: usize = 100;
 
     let now = Local::now();
-    let sortable_timestamp = now.format("%Y%m%d%H%M%S").to_string();
-    let display_timestamp = now.format("%-I:%M %p %-m-%-d-%y").to_string();
+    let timestamp = now.format("%Y%m%d%H%M%S").to_string();
 
     let puppet_status = PuppetStatus {
         hostname: hostname.clone(),
         status: status.clone(),
         exit_code,
-        timestamp: sortable_timestamp.clone(),
-        display_timestamp: display_timestamp.clone(),
+        timestamp: timestamp.clone(),
         logs: logs.clone(),
+        checkin_logs: checkin_logs.clone(),
     };
 
     let json =
@@ -120,7 +120,7 @@ pub async fn handle_sync(
         let mut table = write_txn
             .open_table(SYNC_TABLE)
             .map_err(|e| ServerFnError::new(e.to_string()))?;
-        let key = format!("sync:{}:{}", sortable_timestamp, hostname);
+        let key = format!("sync:{}:{}", timestamp, hostname);
         table
             .insert(key.as_str(), json.as_bytes())
             .map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -140,7 +140,6 @@ pub async fn get_sync_table() -> Result<SyncTableData, ServerFnError> {
         hostname: String,
         status: String,
         timestamp: String,
-        display_timestamp: String,
     }
 
     let mut all_syncs: Vec<SyncTableEntry> = Vec::new();
@@ -170,19 +169,12 @@ pub async fn get_sync_table() -> Result<SyncTableData, ServerFnError> {
             }
         };
 
-        let display_timestamp = if sync.display_timestamp.is_empty() {
-            sync.timestamp.clone()
-        } else {
-            sync.display_timestamp.clone()
-        };
-
         hostnames_set.insert(sync.hostname.clone());
 
         all_syncs.push(SyncTableEntry {
             hostname: sync.hostname,
             status: sync.status,
             timestamp: sync.timestamp,
-            display_timestamp,
         });
     }
 
@@ -244,6 +236,97 @@ pub async fn get_sync_table() -> Result<SyncTableData, ServerFnError> {
     })
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct CheckinLogEntry {
+    pub hostname: String,
+    pub log: String,
+}
+
+#[server]
+pub async fn get_all_checkin_logs() -> Result<Vec<CheckinLogEntry>, ServerFnError> {
+    let mut checkin_entries: Vec<(String, CheckinLogEntry)> = Vec::new();
+
+    let read_txn = DB
+        .begin_read()
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    let table = read_txn
+        .open_table(SYNC_TABLE)
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let iter = table
+        .iter()
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    for item in iter {
+        let (_, value) = item.map_err(|e| ServerFnError::new(e.to_string()))?;
+        let value_bytes = value.value();
+        let value_str = String::from_utf8_lossy(value_bytes);
+
+        let sync: PuppetStatus = match serde_json::from_str(&value_str) {
+            Ok(s) => s,
+            Err(e) => {
+                println!("Failed to deserialize sync data: {}", e);
+                continue;
+            }
+        };
+
+        for log in sync.checkin_logs {
+            checkin_entries.push((
+                sync.timestamp.clone(),
+                CheckinLogEntry {
+                    hostname: sync.hostname.clone(),
+                    log,
+                },
+            ));
+        }
+    }
+
+    checkin_entries.sort_by(|a, b| b.0.cmp(&a.0));
+
+    Ok(checkin_entries.into_iter().map(|(_, entry)| entry).collect())
+}
+
+#[server]
+pub async fn get_checkin_log(
+    hostname: String,
+    log_text: String,
+) -> Result<Option<CheckinLogEntry>, ServerFnError> {
+    let read_txn = DB
+        .begin_read()
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    let table = read_txn
+        .open_table(SYNC_TABLE)
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    let iter = table
+        .iter()
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+
+    for item in iter {
+        let (_, value) = item.map_err(|e| ServerFnError::new(e.to_string()))?;
+        let value_bytes = value.value();
+        let value_str = String::from_utf8_lossy(value_bytes);
+
+        let sync: PuppetStatus = match serde_json::from_str(&value_str) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        if sync.hostname == hostname {
+            for log in &sync.checkin_logs {
+                if log == &log_text {
+                    return Ok(Some(CheckinLogEntry {
+                        hostname: sync.hostname.clone(),
+                        log: log.clone(),
+                    }));
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 #[server]
 pub async fn get_logs_for_interval(
     time: String,
@@ -267,7 +350,7 @@ pub async fn get_logs_for_interval(
         let value_bytes = value.value();
         let value_str = String::from_utf8_lossy(value_bytes);
 
-        let mut sync: PuppetStatus = match serde_json::from_str(&value_str) {
+        let sync: PuppetStatus = match serde_json::from_str(&value_str) {
             Ok(s) => s,
             Err(e) => {
                 println!("Failed to deserialize sync data: {}", e);
@@ -277,10 +360,6 @@ pub async fn get_logs_for_interval(
 
         if sync.hostname != hostname {
             continue;
-        }
-
-        if sync.display_timestamp.is_empty() {
-            sync.display_timestamp = sync.timestamp.clone();
         }
 
         let dt = match NaiveDateTime::parse_from_str(&sync.timestamp, "%Y%m%d%H%M%S") {

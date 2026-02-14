@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 mod server;
 use chrono::{Local, Timelike};
 use server::*;
+use urlencoding::{encode, decode};
 
 fn main() {
     launch(App);
@@ -15,6 +16,165 @@ enum Route {
     Home {},
     #[route("/logs/:time/:hostname")]
     Logs { time: String, hostname: String },
+    #[route("/checkins")]
+    Checkins {},
+    #[route("/checkin/:hostname/:log_text")]
+    CheckinLog { hostname: String, log_text: String },
+}
+
+#[component]
+fn Checkins() -> Element {
+    let mut search_query = use_signal(|| String::new());
+    let checkin_data = use_resource(move || async move { get_all_checkin_logs().await.ok() });
+
+    let filtered_logs = use_memo(move || {
+        let query = search_query().to_lowercase();
+        if let Some(Some(logs)) = checkin_data.read().as_ref() {
+            if query.is_empty() {
+                logs.clone()
+            } else {
+                logs.iter()
+                    .filter(|log| {
+                        log.log.to_lowercase().contains(&query)
+                            || log.hostname.to_lowercase().contains(&query)
+                    })
+                    .cloned()
+                    .collect()
+            }
+        } else {
+            Vec::new()
+        }
+    });
+
+    rsx! {
+        div { class: "min-h-screen bg-neutral p-6",
+            div { class: "max-w-6xl mx-auto",
+                div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
+                    h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
+                        "Laptop Checkins"
+                    }
+                    Link {
+                        to: Route::Home {},
+                        class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
+                        "Home"
+                    }
+                }
+
+                div { class: "mb-6",
+                    input {
+                        class: "w-full px-4 py-3 bg-neutral-content/5 border border-neutral-content/10 rounded-lg text-neutral-content placeholder-neutral-content/40 focus:outline-none focus:border-neutral-content/30 transition-colors",
+                        r#type: "text",
+                        placeholder: "Search logs...",
+                        value: "{search_query}",
+                        oninput: move |evt| search_query.set(evt.value().clone())
+                    }
+                }
+
+                match &*checkin_data.read_unchecked() {
+                    Some(Some(_)) => rsx! {
+                        div { class: "space-y-2",
+                            if filtered_logs.read().is_empty() {
+                                div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                    "No matching logs found"
+                                }
+                            } else {
+                                for log in filtered_logs.read().iter() {
+                                    Link {
+                                        to: Route::CheckinLog {
+                                            hostname: log.hostname.clone(),
+                                            log_text: encode(&log.log).to_string(),
+                                        },
+                                        div {
+                                            class: "px-4 py-3 bg-neutral-content/5 border border-neutral-content/10 rounded-lg hover:bg-neutral-content/10 transition-colors cursor-pointer",
+                                            div { class: "mb-2",
+                                                span { class: "text-xs font-mono text-neutral-content/50",
+                                                    "{log.hostname}"
+                                                }
+                                            }
+                                            pre {
+                                                class: "text-sm text-neutral-content/70 font-mono whitespace-pre-wrap break-words",
+                                                "{log.log}"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    Some(None) => rsx! {
+                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                            "No checkin logs"
+                        }
+                    },
+                    None => rsx! {
+                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                            "Loading..."
+                        }
+                    },
+                }
+            }
+            div {
+                class: "fixed bottom-6 right-6 z-50 text-neutral-content/80",
+                SyncCountdown {}
+            }
+        }
+    }
+}
+
+#[component]
+fn CheckinLog(hostname: String, log_text: String) -> Element {
+    let decoded_log_text = decode(&log_text).unwrap_or_default().to_string();
+
+    let log_data = use_resource(move || {
+        let hostname = hostname.clone();
+        let log_text = decoded_log_text.clone();
+        async move { get_checkin_log(hostname, log_text).await.ok() }
+    });
+
+    rsx! {
+        div { class: "min-h-screen bg-neutral p-6",
+            div { class: "max-w-4xl mx-auto",
+                div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
+                    h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
+                        "Checkin Log"
+                    }
+                    Link {
+                        to: Route::Checkins {},
+                        class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
+                        "Back to Checkins"
+                    }
+                }
+
+                match &*log_data.read_unchecked() {
+                    Some(Some(Some(log))) => rsx! {
+                        div { class: "space-y-4",
+                            div { class: "px-4 py-3 bg-neutral-content/5 border border-neutral-content/10 rounded-lg",
+                                div { class: "mb-4 pb-3 border-b border-neutral-content/10",
+                                    span { class: "text-sm font-mono text-neutral-content/70",
+                                        "{log.hostname}"
+                                    }
+                                }
+                                pre {
+                                    class: "text-base text-neutral-content font-mono whitespace-pre-wrap break-words leading-relaxed",
+                                    "{log.log}"
+                                }
+                            }
+                        }
+                    },
+                    Some(Some(None)) | Some(None) => rsx! {
+                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                            "Log not found"
+                        }
+                    },
+                    None => rsx! {
+                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                            "Loading..."
+                        }
+                    },
+                }
+            }
+        }
+    }
 }
 
 #[component]
@@ -36,6 +196,11 @@ fn Home() -> Element {
                 div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
                     h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
                         "Control Node"
+                    }
+                    Link {
+                        to: Route::Checkins {},
+                        class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
+                        "Laptop Checkins"
                     }
                     button {
                         class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
@@ -211,9 +376,6 @@ fn LogEntry(log: PuppetStatus) -> Element {
                         } else {
                             "w-3 h-3 rounded-full bg-error"
                         },
-                    }
-                    span { class: "text-sm font-mono text-neutral-content/70",
-                        "{log.display_timestamp}"
                     }
                     span { class: "text-xs text-neutral-content/50",
                         "Exit code: {log.exit_code}"

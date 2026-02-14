@@ -1,15 +1,34 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 use std::error::Error;
 use rdev::display_size;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
+use chrono::Local;
 
 slint::include_modules!();
 
 fn submit_id(id: String) {
     println!("Submitted: {}", id);
 
-}
+    let path = if cfg!(windows) {
+        let user = std::env::var("USERNAME").unwrap_or_else(|_| "Default".to_string());
+        PathBuf::from(format!(r"C:\Users\{}\AppData\Local\T766 Control System\checkin-logs", user))
+    } else {
+        PathBuf::from("/etc/t766/checkin-logs")
+    };
 
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
+    let entry = format!("{} - {}\n\n\n", timestamp, id);
+
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = file.write_all(entry.as_bytes());
+    }
+}
 fn main() -> Result<(), Box<dyn Error>> {
     std::env::set_var("SLINT_BACKEND", "winit-femtovg");
     let ui = AppWindow::new()?;

@@ -1,7 +1,9 @@
 use crate::client::Client;
 use crate::host::{hostname, os};
 use std::process::Command;
+use log::{info, warn};
 use serde::Serialize;
+use crate::config::{checkin_logs, clear_logs};
 
 pub struct PuppetClient {
     client: Client,
@@ -13,6 +15,7 @@ pub struct ApplyResult {
     status: String,
     exit_code: i32,
     logs: String,
+    checkin_logs: Vec<String>
 }
 
 impl PuppetClient {
@@ -23,54 +26,40 @@ impl PuppetClient {
     }
 
     pub fn apply(&self) -> Result<String, String> {
+        info!("Fetching manifests...");
         let dir = self.client.manifests()?;
         let dir_name = dir.path().to_str().unwrap();
+        info!("Applying manifests...");
         let result = self.apply_dir(dir_name);
-        let resp = self.client.send_status(result)?;
-        Ok(resp)
+        info!("Returning status to server...");
+        self.client.send_status(result)
     }
-    fn apply_dir(&self, dir_name: &str) -> ApplyResult {
-        let (cmd, args): (&str, Vec<&str>) = if os() == "windows" {
-            (
-                "cmd",
-                vec![
-                    "/C",
-                    "puppet",
-                    "apply",
-                    "--color=false",
-                    dir_name,
-                ],
-            )
-        } else {
-            (
-                "puppet",
-                vec![
-                    "apply",
-                    "--color=false",
-                    dir_name,
-                ],
-            )
-        };
 
-        let mut command = Command::new(cmd);
-        command.args(&args);
+    fn build_puppet_command(dir_name: &str) -> Command {
+        let mut command = if os() == "windows" {
+            let mut cmd = Command::new("cmd");
+            cmd.args(["/C", "puppet", "apply", "--color=false", dir_name]);
+            cmd
+        } else {
+            let mut cmd = Command::new("puppet");
+            cmd.args(["apply", "--color=false", dir_name]);
+            cmd
+        };
 
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            use winapi::um::winbase::{
-                CREATE_NEW_PROCESS_GROUP,
-                CREATE_NO_WINDOW,
-            };
-
-            command.creation_flags(
-                CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
-            );
+            use winapi::um::winbase::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW};
+            command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
         }
 
-        let result = command
+        command
+    }
+
+    fn apply_dir(&self, dir_name: &str) -> ApplyResult {
+        let result = Self::build_puppet_command(dir_name)
             .output()
-            .expect(format!("Failed to run puppet apply {}", dir_name).as_str());
+            .unwrap_or_else(|_| panic!("Failed to run puppet apply {}", dir_name));
 
         let logs = format!(
             "{}{}",
@@ -79,8 +68,11 @@ impl PuppetClient {
         );
 
         let exit_code = result.status.code().unwrap_or(-1);
+        let checkin_logs = match checkin_logs() {
+            Ok(logs) | Err(logs) => logs,
+        };
 
-        ApplyResult {
+        let apply_result = ApplyResult {
             hostname: hostname(),
             status: if result.status.success() {
                 "success".to_string()
@@ -91,6 +83,13 @@ impl PuppetClient {
             },
             exit_code,
             logs,
+            checkin_logs,
+        };
+
+        if let Err(e) = clear_logs() {
+            warn!("Failed to clear checkin logs: {}", e);
         }
+
+        apply_result
     }
 }
