@@ -12,11 +12,18 @@ use std::io::Read;
 use std::process::Command;
 use std::sync::mpsc;
 use tar::Builder;
+use std::fs::File;
+use std::io::BufReader;
+use regex::Regex;
 
 const SYNC_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("puppet_sync");
 
 pub static DB: Lazy<Database> = Lazy::new(|| {
     Database::create("cn-db.redb").expect("Failed to create database")
+});
+
+static CODE_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b(\d{6})\b").unwrap()
 });
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -36,6 +43,38 @@ pub struct SyncTableData {
     pub times: Vec<String>,
     pub hostnames: Vec<String>,
     pub syncs: HashMap<String, HashMap<String, String>>,
+}
+
+fn load_people_map() -> HashMap<String, String> {
+    let file = match File::open("/home/team766/web/people.csv") {
+        Ok(f) => f,
+        Err(_) => return HashMap::new(),
+    };
+    
+    let reader = BufReader::new(file);
+    let mut csv_reader = csv::Reader::from_reader(reader);
+    
+    let mut map = HashMap::new();
+    for result in csv_reader.records() {
+        if let Ok(record) = result {
+            if record.len() >= 2 {
+                let code = record.get(0).unwrap_or("").to_string();
+                let message_content = record.get(1).unwrap_or("").to_string();
+                if !code.is_empty() && !message_content.is_empty() {
+                    map.insert(code, message_content);
+                }
+            }
+        }
+    }
+    
+    map
+}
+
+fn replace_codes_with_names(text: &str, people_map: &HashMap<String, String>) -> String {
+    CODE_REGEX.replace_all(text, |caps: &regex::Captures| {
+        let code = caps.get(1).unwrap().as_str();
+        people_map.get(code).cloned().unwrap_or_else(|| code.to_string())
+    }).to_string()
 }
 
 #[post("/puppet-sync")]
@@ -245,6 +284,7 @@ pub struct CheckinLogEntry {
 #[server]
 pub async fn get_all_checkin_logs() -> Result<Vec<CheckinLogEntry>, ServerFnError> {
     let mut checkin_entries: Vec<(String, CheckinLogEntry)> = Vec::new();
+    let people_map = load_people_map();
 
     let read_txn = DB
         .begin_read()
@@ -271,11 +311,12 @@ pub async fn get_all_checkin_logs() -> Result<Vec<CheckinLogEntry>, ServerFnErro
         };
 
         for log in sync.checkin_logs {
+            let processed_log = replace_codes_with_names(&log, &people_map);
             checkin_entries.push((
                 sync.timestamp.clone(),
                 CheckinLogEntry {
                     hostname: sync.hostname.clone(),
-                    log,
+                    log: processed_log,
                 },
             ));
         }
@@ -291,6 +332,8 @@ pub async fn get_checkin_log(
     hostname: String,
     log_text: String,
 ) -> Result<Option<CheckinLogEntry>, ServerFnError> {
+    let people_map = load_people_map();
+    
     let read_txn = DB
         .begin_read()
         .map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -314,10 +357,11 @@ pub async fn get_checkin_log(
 
         if sync.hostname == hostname {
             for log in &sync.checkin_logs {
-                if log == &log_text {
+                let processed_log = replace_codes_with_names(log, &people_map);
+                if processed_log == log_text {
                     return Ok(Some(CheckinLogEntry {
                         hostname: sync.hostname.clone(),
-                        log: log.clone(),
+                        log: processed_log,
                     }));
                 }
             }

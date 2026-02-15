@@ -1,3 +1,4 @@
+// main.rs
 #![allow(non_snake_case)]
 use dioxus::prelude::*;
 mod server;
@@ -48,75 +49,75 @@ fn Checkins() -> Element {
 
     rsx! {
         div { class: "min-h-screen bg-neutral p-6",
-            div { class: "max-w-6xl mx-auto",
-                div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
-                    h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
-                        "Laptop Checkins"
+              div { class: "max-w-6xl mx-auto",
+                    div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
+                          h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
+                               "Laptop Checkins"
+                          }
+                          Link {
+                              to: Route::Home {},
+                              class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
+                              "Home"
+                          }
                     }
-                    Link {
-                        to: Route::Home {},
-                        class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
-                        "Home"
-                    }
-                }
 
-                div { class: "mb-6",
-                    input {
-                        class: "w-full px-4 py-3 bg-neutral-content/5 border border-neutral-content/10 rounded-lg text-neutral-content placeholder-neutral-content/40 focus:outline-none focus:border-neutral-content/30 transition-colors",
-                        r#type: "text",
-                        placeholder: "Search logs...",
-                        value: "{search_query}",
-                        oninput: move |evt| search_query.set(evt.value().clone())
+                    div { class: "mb-6",
+                          input {
+                              class: "w-full px-4 py-3 bg-neutral-content/5 border border-neutral-content/10 rounded-lg text-neutral-content placeholder-neutral-content/40 focus:outline-none focus:border-neutral-content/30 transition-colors",
+                              r#type: "text",
+                              placeholder: "Search logs...",
+                              value: "{search_query}",
+                              oninput: move |evt| search_query.set(evt.value().clone())
+                          }
                     }
-                }
 
-                match &*checkin_data.read_unchecked() {
-                    Some(Some(_)) => rsx! {
-                        div { class: "space-y-2",
-                            if filtered_logs.read().is_empty() {
-                                div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                                    "No matching logs found"
-                                }
-                            } else {
-                                for log in filtered_logs.read().iter() {
-                                    Link {
-                                        to: Route::CheckinLog {
-                                            hostname: log.hostname.clone(),
-                                            log_text: encode(&log.log).to_string(),
-                                        },
-                                        div {
-                                            class: "px-4 py-3 bg-neutral-content/5 border border-neutral-content/10 rounded-lg hover:bg-neutral-content/10 transition-colors cursor-pointer",
-                                            div { class: "mb-2",
-                                                span { class: "text-xs font-mono text-neutral-content/50",
-                                                    "{log.hostname}"
-                                                }
-                                            }
-                                            pre {
-                                                class: "text-sm text-neutral-content/70 font-mono whitespace-pre-wrap break-words",
-                                                "{log.log}"
-                                            }
-                                        }
-                                    }
-                                }
+                    match &*checkin_data.read_unchecked() {
+                        Some(Some(_)) => rsx! {
+                            div { class: "space-y-2",
+                                  if filtered_logs.read().is_empty() {
+                                      div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                            "No matching logs found"
+                                      }
+                                  } else {
+                                      for log in filtered_logs.read().iter() {
+                                          Link {
+                                              to: Route::CheckinLog {
+                                                  hostname: log.hostname.clone(),
+                                                  log_text: encode(&log.log).to_string(),
+                                              },
+                                              div {
+                                                  class: "px-4 py-3 bg-neutral-content/5 border border-neutral-content/10 rounded-lg hover:bg-neutral-content/10 transition-colors cursor-pointer",
+                                                  div { class: "mb-2",
+                                                        span { class: "text-xs font-mono text-neutral-content/50",
+                                                               "{log.hostname}"
+                                                        }
+                                                  }
+                                                  pre {
+                                                      class: "text-sm text-neutral-content/70 font-mono whitespace-pre-wrap break-words",
+                                                      "{log.log}"
+                                                  }
+                                              }
+                                          }
+                                      }
+                                  }
                             }
-                        }
-                    },
-                    Some(None) => rsx! {
-                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                            "No checkin logs"
-                        }
-                    },
-                    None => rsx! {
-                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                            "Loading..."
-                        }
-                    },
-                }
-            }
-            div {
-                class: "fixed bottom-6 right-6 z-50 text-neutral-content/80",
-                SyncCountdown {}
-            }
+                        },
+                        Some(None) => rsx! {
+                            div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                  "No checkin logs"
+                            }
+                        },
+                        None => rsx! {
+                            div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                  "Loading..."
+                            }
+                        },
+                    }
+              }
+              div {
+                  class: "fixed bottom-6 right-6 z-50 text-neutral-content/80",
+                  SyncCountdown {}
+              }
         }
     }
 }
@@ -133,46 +134,46 @@ fn CheckinLog(hostname: String, log_text: String) -> Element {
 
     rsx! {
         div { class: "min-h-screen bg-neutral p-6",
-            div { class: "max-w-4xl mx-auto",
-                div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
-                    h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
-                        "Checkin Log"
+              div { class: "max-w-4xl mx-auto",
+                    div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
+                          h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
+                               "Checkin Log"
+                          }
+                          Link {
+                              to: Route::Checkins {},
+                              class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
+                              "Back to Checkins"
+                          }
                     }
-                    Link {
-                        to: Route::Checkins {},
-                        class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
-                        "Back to Checkins"
-                    }
-                }
 
-                match &*log_data.read_unchecked() {
-                    Some(Some(Some(log))) => rsx! {
-                        div { class: "space-y-4",
-                            div { class: "px-4 py-3 bg-neutral-content/5 border border-neutral-content/10 rounded-lg",
-                                div { class: "mb-4 pb-3 border-b border-neutral-content/10",
-                                    span { class: "text-sm font-mono text-neutral-content/70",
-                                        "{log.hostname}"
-                                    }
-                                }
-                                pre {
-                                    class: "text-base text-neutral-content font-mono whitespace-pre-wrap break-words leading-relaxed",
-                                    "{log.log}"
-                                }
+                    match &*log_data.read_unchecked() {
+                        Some(Some(Some(log))) => rsx! {
+                            div { class: "space-y-4",
+                                  div { class: "px-4 py-3 bg-neutral-content/5 border border-neutral-content/10 rounded-lg",
+                                        div { class: "mb-4 pb-3 border-b border-neutral-content/10",
+                                              span { class: "text-sm font-mono text-neutral-content/70",
+                                                     "{log.hostname}"
+                                              }
+                                        }
+                                        pre {
+                                            class: "text-base text-neutral-content font-mono whitespace-pre-wrap break-words leading-relaxed",
+                                            "{log.log}"
+                                        }
+                                  }
                             }
-                        }
-                    },
-                    Some(Some(None)) | Some(None) => rsx! {
-                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                            "Log not found"
-                        }
-                    },
-                    None => rsx! {
-                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                            "Loading..."
-                        }
-                    },
-                }
-            }
+                        },
+                        Some(Some(None)) | Some(None) => rsx! {
+                            div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                  "Log not found"
+                            }
+                        },
+                        None => rsx! {
+                            div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                  "Loading..."
+                            }
+                        },
+                    }
+              }
         }
     }
 }
@@ -192,90 +193,90 @@ fn Home() -> Element {
 
     rsx! {
         div { class: "min-h-screen bg-neutral p-6",
-            div { class: "max-w-6xl mx-auto",
-                div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
-                    h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
-                        "Control Node"
+              div { class: "max-w-6xl mx-auto",
+                    div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
+                          h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
+                               "Control Node"
+                          }
+                          Link {
+                              to: Route::Checkins {},
+                              class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
+                              "Laptop Checkins"
+                          }
+                          button {
+                              class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
+                              onclick: move |_| sync_data.restart(),
+                              "Refresh"
+                          }
                     }
-                    Link {
-                        to: Route::Checkins {},
-                        class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
-                        "Laptop Checkins"
-                    }
-                    button {
-                        class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
-                        onclick: move |_| sync_data.restart(),
-                        "Refresh"
-                    }
-                }
 
-                match &*sync_data.read_unchecked() {
-                    Some(Some(data)) => rsx! {
-                        div { class: "overflow-x-auto",
-                            table { class: "w-full border-collapse",
-                                thead {
-                                    tr { class: "border-b border-neutral-content/10",
-                                        th { class: "text-left py-3 px-4 text-xs font-light text-neutral-content/50 uppercase tracking-wider",
-                                            "Time"
-                                        }
-                                        for hostname in &data.hostnames {
-                                            th { class: "text-center py-3 px-4 text-xs font-light text-neutral-content/50 uppercase tracking-wider",
-                                                "{hostname}"
-                                            }
-                                        }
-                                    }
-                                }
-                                tbody {
-                                    for time in &data.times {
-                                        tr { class: "border-b border-neutral-content/5 hover:bg-neutral-content/5 transition-colors",
-                                            td { class: "py-3 px-4 text-sm font-mono text-neutral-content/70",
-                                                "{time}"
-                                            }
-                                            for hostname in &data.hostnames {
-                                                td { class: "text-center py-3 px-4",
-                                                    if let Some(hosts) = data.syncs.get(time) {
-                                                        if let Some(status) = hosts.get(hostname) {
-                                                            Link {
-                                                                to: Route::Logs {
-                                                                    time: time.clone(),
-                                                                    hostname: hostname.clone()
-                                                                },
-                                                                div {
-                                                                    class: if status == "success" {
-                                                                        "w-2 h-2 rounded-full bg-success mx-auto cursor-pointer hover:scale-150 transition-transform"
+                    match &*sync_data.read_unchecked() {
+                        Some(Some(data)) => rsx! {
+                            div { class: "overflow-x-auto",
+                                  table { class: "w-full border-collapse",
+                                          thead {
+                                              tr { class: "border-b border-neutral-content/10",
+                                                   th { class: "text-left py-3 px-4 text-xs font-light text-neutral-content/50 uppercase tracking-wider",
+                                                        "Time"
+                                                   }
+                                                   for hostname in &data.hostnames {
+                                                       th { class: "text-center py-3 px-4 text-xs font-light text-neutral-content/50 uppercase tracking-wider",
+                                                            "{hostname}"
+                                                       }
+                                                   }
+                                              }
+                                          }
+                                          tbody {
+                                              for time in &data.times {
+                                                  tr { class: "border-b border-neutral-content/5 hover:bg-neutral-content/5 transition-colors",
+                                                       td { class: "py-3 px-4 text-sm font-mono text-neutral-content/70",
+                                                            "{time}"
+                                                       }
+                                                       for hostname in &data.hostnames {
+                                                           td { class: "text-center py-3 px-4",
+                                                                if let Some(hosts) = data.syncs.get(time) {
+                                                                    if let Some(status) = hosts.get(hostname) {
+                                                                        Link {
+                                                                            to: Route::Logs {
+                                                                                time: time.clone(),
+                                                                                hostname: hostname.clone()
+                                                                            },
+                                                                            div {
+                                                                                class: if status == "success" {
+                                                                                    "w-2 h-2 rounded-full bg-success mx-auto cursor-pointer hover:scale-150 transition-transform"
+                                                                                } else {
+                                                                                    "w-2 h-2 rounded-full bg-error mx-auto cursor-pointer hover:scale-150 transition-transform"
+                                                                                },
+                                                                            }
+                                                                        }
                                                                     } else {
-                                                                        "w-2 h-2 rounded-full bg-error mx-auto cursor-pointer hover:scale-150 transition-transform"
-                                                                    },
+                                                                        div { class: "w-2 h-2 rounded-full bg-neutral-content/10 mx-auto" }
+                                                                    }
                                                                 }
-                                                            }
-                                                        } else {
-                                                            div { class: "w-2 h-2 rounded-full bg-neutral-content/10 mx-auto" }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                                           }
+                                                       }
+                                                  }
+                                              }
+                                          }
+                                  }
                             }
-                        }
-                    },
-                    Some(None) => rsx! {
-                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                            "No sync data"
-                        }
-                    },
-                    None => rsx! {
-                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                            "Loading..."
-                        }
-                    },
-                }
-            }
-            div {
-                class: "fixed bottom-6 right-6 z-50 text-neutral-content/80",
-                SyncCountdown {}
-            }
+                        },
+                        Some(None) => rsx! {
+                            div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                  "No sync data"
+                            }
+                        },
+                        None => rsx! {
+                            div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                  "Loading..."
+                            }
+                        },
+                    }
+              }
+              div {
+                  class: "fixed bottom-6 right-6 z-50 text-neutral-content/80",
+                  SyncCountdown {}
+              }
         }
     }
 }
@@ -300,7 +301,7 @@ fn SyncCountdown() -> Element {
 
     rsx! {
         span { class: "text-2xl text-neutral-content/100",
-            "{countdown}"
+               "{countdown}"
         }
     }
 }
@@ -318,43 +319,43 @@ fn Logs(time: String, hostname: String) -> Element {
 
     rsx! {
         div { class: "min-h-screen bg-neutral p-6",
-            div { class: "max-w-4xl mx-auto",
-                div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
-                    h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
-                        "Logs: {hostname_display} @ {time_display}"
+              div { class: "max-w-4xl mx-auto",
+                    div { class: "flex justify-between items-center mb-8 pb-4 border-b border-neutral-content/10",
+                          h1 { class: "text-2xl font-light tracking-wide text-neutral-content",
+                               "Logs: {hostname_display} @ {time_display}"
+                          }
+                          Link {
+                              to: Route::Home {},
+                              class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
+                              "Home"
+                          }
                     }
-                    Link {
-                        to: Route::Home {},
-                        class: "text-xs text-neutral-content/60 hover:text-neutral-content transition-colors uppercase tracking-wider",
-                        "Home"
-                    }
-                }
 
-                match &*log_data.read_unchecked() {
-                    Some(Some(logs)) if !logs.is_empty() => rsx! {
-                        div { class: "space-y-4",
-                            for log in logs.iter() {
-                                LogEntry { log: log.clone() }
+                    match &*log_data.read_unchecked() {
+                        Some(Some(logs)) if !logs.is_empty() => rsx! {
+                            div { class: "space-y-4",
+                                  for log in logs.iter() {
+                                      LogEntry { log: log.clone() }
+                                  }
                             }
-                        }
-                    },
-                    Some(Some(_)) => rsx! {
-                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                            "No logs found for this interval"
-                        }
-                    },
-                    Some(None) => rsx! {
-                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                            "No logs found"
-                        }
-                    },
-                    None => rsx! {
-                        div { class: "text-center py-12 text-neutral-content/40 text-sm",
-                            "Loading..."
-                        }
-                    },
-                }
-            }
+                        },
+                        Some(Some(_)) => rsx! {
+                            div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                  "No logs found for this interval"
+                            }
+                        },
+                        Some(None) => rsx! {
+                            div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                  "No logs found"
+                            }
+                        },
+                        None => rsx! {
+                            div { class: "text-center py-12 text-neutral-content/40 text-sm",
+                                  "Loading..."
+                            }
+                        },
+                    }
+              }
         }
     }
 }
@@ -365,39 +366,39 @@ fn LogEntry(log: PuppetStatus) -> Element {
 
     rsx! {
         div { class: "border border-neutral-content/10 rounded-lg overflow-hidden",
-            button {
-                class: "w-full px-4 py-3 flex justify-between items-center hover:bg-neutral-content/5 transition-colors",
-                onclick: move |_| is_open.set(!is_open()),
+              button {
+                  class: "w-full px-4 py-3 flex justify-between items-center hover:bg-neutral-content/5 transition-colors",
+                  onclick: move |_| is_open.set(!is_open()),
 
-                div { class: "flex items-center gap-4",
-                    div {
-                        class: if log.status == "success" {
-                            "w-3 h-3 rounded-full bg-success"
+                  div { class: "flex items-center gap-4",
+                        div {
+                            class: if log.status == "success" {
+                                "w-3 h-3 rounded-full bg-success"
+                            } else {
+                                "w-3 h-3 rounded-full bg-error"
+                            },
+                        }
+                        span { class: "text-xs text-neutral-content/50",
+                               "Exit code: {log.exit_code}"
+                        }
+                  }
+
+                  span { class: "text-neutral-content/40",
+                         if is_open() { "−" } else { "+" }
+                  }
+              }
+
+              if is_open() {
+                  div { class: "px-4 py-3 bg-neutral-content/5 border-t border-neutral-content/10",
+                        if !log.logs.is_empty() {
+                            pre {
+                                class: "text-xs text-neutral-content/70 bg-black/20 p-3 rounded overflow-x-auto font-mono whitespace-pre-wrap",
+                                "{log.logs}"
+                            }
                         } else {
-                            "w-3 h-3 rounded-full bg-error"
-                        },
-                    }
-                    span { class: "text-xs text-neutral-content/50",
-                        "Exit code: {log.exit_code}"
-                    }
-                }
-
-                span { class: "text-neutral-content/40",
-                    if is_open() { "−" } else { "+" }
-                }
-            }
-
-            if is_open() {
-                div { class: "px-4 py-3 bg-neutral-content/5 border-t border-neutral-content/10",
-                    if !log.logs.is_empty() {
-                        pre {
-                            class: "text-xs text-neutral-content/70 bg-black/20 p-3 rounded overflow-x-auto font-mono whitespace-pre-wrap",
-                            "{log.logs}"
-                        }
-                    } else {
-                        div { class: "text-xs text-neutral-content/40 italic",
-                            "No logs available"
-                        }
+                            div { class: "text-xs text-neutral-content/40 italic",
+                                  "No logs available"
+                            }
                     }
                 }
             }
