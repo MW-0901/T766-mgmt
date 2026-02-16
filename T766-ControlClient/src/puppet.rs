@@ -70,7 +70,6 @@ impl PuppetClient {
 
     fn apply_dir(&self, dir_name: &str) -> ApplyResult {
         let manifest_path = format!("{}/manifests", dir_name);
-        println!("{manifest_path}");
         let result = Self::build_puppet_command(manifest_path.as_str())
             .output()
             .unwrap_or_else(|_| panic!("Failed to run puppet apply {}", dir_name));

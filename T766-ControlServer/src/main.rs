@@ -1,4 +1,3 @@
-// main.rs
 #![allow(non_snake_case)]
 use dioxus::prelude::*;
 mod server;
@@ -31,7 +30,7 @@ fn Checkins() -> Element {
     let filtered_logs = use_memo(move || {
         let query = search_query().to_lowercase();
         if let Some(Some(logs)) = checkin_data.read().as_ref() {
-            if query.is_empty() {
+            let mut filtered = if query.is_empty() {
                 logs.clone()
             } else {
                 logs.iter()
@@ -41,7 +40,15 @@ fn Checkins() -> Element {
                     })
                     .cloned()
                     .collect()
-            }
+            };
+
+            filtered.sort_by(|a, b| {
+                let a_time = a.log.split(" - ").next().unwrap_or("");
+                let b_time = b.log.split(" - ").next().unwrap_or("");
+                b_time.cmp(a_time)
+            });
+
+            filtered
         } else {
             Vec::new()
         }
