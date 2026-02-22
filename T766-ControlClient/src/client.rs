@@ -7,10 +7,14 @@ use std::sync::LazyLock;
 use crate::config::{load_config, ClientConfig};
 use crate::puppet::ApplyResult;
 
+const MAX_LOG_BYTES: usize = 50_000;
+
 static CONFIG: LazyLock<ClientConfig> = LazyLock::new(|| {
     load_config().expect("failed to load config")
 });
+
 pub struct Client {}
+
 impl Client {
     pub fn new() -> Self {
         Client {}
@@ -71,7 +75,21 @@ impl Client {
         }
     }
 
-    pub fn send_status(&self, status: ApplyResult) -> Result<String, String> {
+    fn truncate_log(log: &str) -> String {
+        if log.len() <= MAX_LOG_BYTES {
+            return log.to_string();
+        }
+        let truncated = &log[log.len() - MAX_LOG_BYTES..];
+        format!("[...truncated...]\n{}", truncated)
+    }
+
+    pub fn send_status(&self, mut status: ApplyResult) -> Result<String, String> {
+        status.logs = Self::truncate_log(&status.logs);
+        status.checkin_logs = status.checkin_logs
+            .into_iter()
+            .map(|l| Self::truncate_log(&l))
+            .collect();
+
         let url_one = format!("{}puppet-sync", CONFIG.primary_url);
         let url_two = format!("{}puppet-sync", CONFIG.fallback_url);
         let body = serde_json::to_string(&status)

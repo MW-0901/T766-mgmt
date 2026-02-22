@@ -5,8 +5,53 @@ use chrono::{Local, Timelike};
 use server::*;
 use urlencoding::{encode, decode};
 
+#[cfg(feature = "server")]
+#[tokio::main]
+async fn main() {
+    use axum::extract::Path;
+    use axum::response::IntoResponse;
+    use axum::http::StatusCode;
+    use dioxus_server::DioxusRouterExt;
+    use tower_http::services::ServeDir;
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    async fn hash_handler(Path(filename): Path<String>) -> impl IntoResponse {
+        if filename.contains("..") || filename.contains('/') || filename.contains('\\') || filename.starts_with('.') {
+            return (StatusCode::BAD_REQUEST, String::from("Invalid filename"));
+        }
+        let file_path = format!("/puppet/{}", filename);
+        let mut file = match std::fs::File::open(&file_path) {
+            Ok(f) => f,
+            Err(e) => return (StatusCode::NOT_FOUND, format!("File not found: {}", e)),
+        };
+        let mut hasher = Sha256::new();
+        let mut buffer = vec![0u8; 8192];
+        loop {
+            match file.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => hasher.update(&buffer[..n]),
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Read error: {}", e)),
+            }
+        }
+        (StatusCode::OK, format!("{:x}", hasher.finalize()))
+    }
+
+    let address = dioxus::cli_config::fullstack_address_or_localhost();
+
+    let router = axum::Router::new()
+        .nest_service("/data", ServeDir::new("/puppet"))
+        .route("/data/hashes/{filename}", axum::routing::get(hash_handler))
+        .serve_dioxus_application(dioxus_server::ServeConfig::new(), App);
+
+    let router = router.into_make_service();
+    let listener = tokio::net::TcpListener::bind(address).await.unwrap();
+    axum::serve(listener, router).await.unwrap();
+}
+
+#[cfg(not(feature = "server"))]
 fn main() {
-    launch(App);
+    dioxus::launch(App);
 }
 
 #[derive(Clone, Routable, PartialEq)]
@@ -406,9 +451,9 @@ fn LogEntry(log: PuppetStatus) -> Element {
                             div { class: "text-xs text-neutral-content/40 italic",
                                   "No logs available"
                             }
-                    }
-                }
-            }
+                        }
+                  }
+              }
         }
     }
 }

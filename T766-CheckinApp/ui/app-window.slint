@@ -21,6 +21,10 @@ export component AppWindow inherits Window {
                 root.submit-id();
             }
         }
+        Text {
+            text: "If you do not have an ID, please send your full name to user codebot\n on the team 766 server.";
+            color: #4c5454;
+        }
         error-message := Text {
             text: "Error: Malformed ID";
             visible: false;

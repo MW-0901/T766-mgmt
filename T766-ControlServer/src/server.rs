@@ -50,10 +50,10 @@ fn load_people_map() -> HashMap<String, String> {
         Ok(f) => f,
         Err(_) => return HashMap::new(),
     };
-    
+
     let reader = BufReader::new(file);
     let mut csv_reader = csv::Reader::from_reader(reader);
-    
+
     let mut map = HashMap::new();
     for result in csv_reader.records() {
         if let Ok(record) = result {
@@ -66,7 +66,7 @@ fn load_people_map() -> HashMap<String, String> {
             }
         }
     }
-    
+
     map
 }
 
@@ -333,7 +333,7 @@ pub async fn get_checkin_log(
     log_text: String,
 ) -> Result<Option<CheckinLogEntry>, ServerFnError> {
     let people_map = load_people_map();
-    
+
     let read_txn = DB
         .begin_read()
         .map_err(|e| ServerFnError::new(e.to_string()))?;
@@ -461,55 +461,6 @@ pub async fn get_manifests() -> Result<ByteStream, ServerFnError> {
 
         if let Err(e) = archive.finish() {
             eprintln!("Error finishing archive: {}", e);
-        }
-    });
-
-    Ok(ByteStream::spawn(move |tx| async move {
-        while let Ok(chunk) = recv.recv() {
-            if tx.unbounded_send(chunk.into()).is_err() {
-                break;
-            }
-        }
-    }))
-}
-
-#[get("/data/{filename}")]
-pub async fn get_data_file(filename: String) -> Result<ByteStream, ServerFnError> {
-    if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
-        return Err(ServerFnError::new("Invalid filename"));
-    }
-    if filename.starts_with('.') {
-        return Err(ServerFnError::new("Invalid filename"));
-    }
-
-    let file_path = format!("/puppet/{}", filename);
-
-    let (send, recv) = mpsc::sync_channel::<Vec<u8>>(8);
-
-    std::thread::spawn(move || {
-        let mut file = match std::fs::File::open(&file_path) {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!("Failed to open file {}: {}", file_path, e);
-                return;
-            }
-        };
-
-        let mut buffer = vec![0u8; 8192];
-
-        loop {
-            match file.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(n) => {
-                    if send.send(buffer[..n].to_vec()).is_err() {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error reading file: {}", e);
-                    break;
-                }
-            }
         }
     });
 

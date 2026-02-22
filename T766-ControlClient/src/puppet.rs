@@ -14,8 +14,8 @@ pub struct ApplyResult {
     hostname: String,
     status: String,
     exit_code: i32,
-    logs: String,
-    checkin_logs: Vec<String>
+    pub logs: String,
+    pub checkin_logs: Vec<String>
 }
 
 impl PuppetClient {
