@@ -27,7 +27,12 @@ Section "AddToStartup"
   CreateDirectory "$LOCALAPPDATA\\${APP_NAME}"
   IfFileExists "$LOCALAPPDATA\\${APP_NAME}\\settings.toml" +3 0
   CopyFiles "$INSTDIR\\settings.toml" "$LOCALAPPDATA\\${APP_NAME}\\settings.toml"
-  CreateDirectory "$LOCALAPPDATA\\${APP_NAME}\\checkin-logs"
+  IfFileExists "$LOCALAPPDATA\\${APP_NAME}\\checkin-logs" +2 0
+  FileOpen $0 "$LOCALAPPDATA\\${APP_NAME}\\checkin-logs" w
+  FileClose $0
+
+  Delete "$DESKTOP\\${APP_NAME}.lnk"
+  Delete "$DESKTOP\\T766-ControlClient.lnk"
 
   WriteRegStr HKCU "Software\\T766\\Control" "InstallPath" "$INSTDIR"
 SectionEnd
@@ -38,9 +43,13 @@ Section "un.RemoveFromStartup"
 
   DeleteRegKey HKCU "Software\\T766\\Control"
 
-  MessageBox MB_YESNO "Do you want to remove application settings & logs?" IDNO +5
-  RMDir /r "$LOCALAPPDATA\\${APP_NAME}\\checkin-logs"
+  MessageBox MB_YESNO "Do you want to remove application settings & logs?" IDNO +7
+  Delete "$LOCALAPPDATA\\${APP_NAME}\\checkin-logs"
+  Delete "$LOCALAPPDATA\\${APP_NAME}\\old-checkin-logs"
   Delete "$LOCALAPPDATA\\${APP_NAME}\\settings.toml"
+  Delete "$LOCALAPPDATA\\${APP_NAME}\\last_run.txt"
+  Delete "$LOCALAPPDATA\\${APP_NAME}\\client.log"
+  Delete "$LOCALAPPDATA\\${APP_NAME}\\client.old.log"
   RMDir "$LOCALAPPDATA\\${APP_NAME}"
 SectionEnd
 """

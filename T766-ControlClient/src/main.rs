@@ -9,8 +9,8 @@ mod config;
 use chrono::{Local, DateTime, Timelike, Duration};
 use std::{thread, fs, path::PathBuf, sync::Arc, sync::atomic::{AtomicBool, Ordering}};
 use std::process::exit;
-use env_logger;
 use log::{info, error, warn};
+use config::log_path;
 
 const CATCH_UP_WINDOW_MINUTES: i64 = 15;
 const MAX_CONSECUTIVE_FAILURES: u32 = 5;
@@ -159,10 +159,36 @@ fn calculate_backoff(failure_count: u32) -> std::time::Duration {
     std::time::Duration::from_secs(backoff_secs)
 }
 
+fn rotate_log_if_needed(log_path: &PathBuf) {
+    const MAX_LOG_SIZE: u64 = 5 * 1024 * 1024; // 5MB
+    if let Ok(metadata) = fs::metadata(log_path) {
+        if metadata.len() > MAX_LOG_SIZE {
+            let old = log_path.with_extension("old.log");
+            let _ = fs::rename(log_path, old);
+        }
+    }
+}
+
+fn setup_logging() -> Result<(), fern::InitError> {
+    rotate_log_if_needed(&log_path());
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{}] [{}] {}",
+                Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Info)
+        .chain(std::io::stderr())
+        .chain(fern::log_file(log_path())?)
+        .apply()?;
+    Ok(())
+}
+
 fn main() {
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
-        .init();
+    setup_logging().expect("Failed to initialize logging");
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_clone = Arc::clone(&shutdown);

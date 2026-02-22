@@ -23,6 +23,10 @@ macro_rules! conf_file {
     };
 }
 
+pub fn log_path() -> PathBuf {
+    conf_file!("client.log")
+}
+
 fn conf_path() -> PathBuf {
     conf_file!("settings.toml")
 }
