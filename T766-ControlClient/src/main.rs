@@ -11,6 +11,7 @@ use std::{thread, fs, path::PathBuf, sync::Arc, sync::atomic::{AtomicBool, Order
 use std::process::exit;
 use log::{info, error, warn};
 use config::log_path;
+use crate::host::os;
 
 const CATCH_UP_WINDOW_MINUTES: i64 = 15;
 const MAX_CONSECUTIVE_FAILURES: u32 = 5;
@@ -18,11 +19,12 @@ const MIN_BACKOFF_SECONDS: u64 = 30;
 const MAX_BACKOFF_SECONDS: u64 = 300;
 
 fn get_state_file() -> Result<PathBuf, String> {
-    let local_appdata = std::env::var("LOCALAPPDATA")
-        .or_else(|_| std::env::var("APPDATA"))
-        .unwrap_or_else(|_| ".".to_string());
+    let state_dir = if os() == "windows" {
+        PathBuf::from(r"C:\ProgramData\T766 Control System")
+    } else {
+        PathBuf::from("/etc/t766")
+    };
 
-    let state_dir = PathBuf::from(local_appdata).join("T766 Control System");
     fs::create_dir_all(&state_dir)
         .map_err(|e| format!("Failed to create state directory: {}", e))?;
     Ok(state_dir.join("last_run.txt"))
@@ -170,7 +172,25 @@ fn rotate_log_if_needed(log_path: &PathBuf) {
 }
 
 fn setup_logging() -> Result<(), fern::InitError> {
-    rotate_log_if_needed(&log_path());
+    let log = log_path();
+
+    // Ensure the log directory exists (e.g. C:\ProgramData\T766 Control System\)
+    if let Some(parent) = log.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+
+    // If the directory still doesn't exist (e.g. dev run without elevated perms),
+    // fall back to a log file next to the executable
+    let log = if log.parent().map(|p| p.exists()).unwrap_or(false) {
+        log
+    } else {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.join("client.log")))
+            .unwrap_or_else(|| PathBuf::from("client.log"))
+    };
+
+    rotate_log_if_needed(&log);
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -182,7 +202,7 @@ fn setup_logging() -> Result<(), fern::InitError> {
         })
         .level(log::LevelFilter::Info)
         .chain(std::io::stderr())
-        .chain(fern::log_file(log_path())?)
+        .chain(fern::log_file(log)?)
         .apply()?;
     Ok(())
 }

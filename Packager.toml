@@ -16,40 +16,64 @@ resources = [
 ]
 
 [nsis]
+installer-mode = "perMachine"
 preinstall-section = """
 !define APP_NAME "T766 Control System"
 
-Section "AddToStartup"
-  nsExec::ExecToStack 'schtasks /Create /F /SC ONLOGON /TN "${APP_NAME}\\T766-ControlClient" /TR "\"$INSTDIR\\T766-ControlClient.exe\"" /RL HIGHEST /DELAY 0000:02'
+Section -T766Setup
+  CreateDirectory "$COMMONAPPDATA\\${APP_NAME}"
 
-  nsExec::ExecToStack 'schtasks /Create /F /SC ONLOGON /TN "${APP_NAME}\\T766-CheckinApp" /TR "\"$INSTDIR\\T766-CheckinApp.exe\"" /RL HIGHEST /DELAY 0000:03'
-
-  CreateDirectory "$LOCALAPPDATA\\${APP_NAME}"
-  IfFileExists "$LOCALAPPDATA\\${APP_NAME}\\settings.toml" +3 0
-  CopyFiles "$INSTDIR\\settings.toml" "$LOCALAPPDATA\\${APP_NAME}\\settings.toml"
-  IfFileExists "$LOCALAPPDATA\\${APP_NAME}\\checkin-logs" +2 0
-  FileOpen $0 "$LOCALAPPDATA\\${APP_NAME}\\checkin-logs" w
+  IfFileExists "$COMMONAPPDATA\\${APP_NAME}\\checkin-logs" +3 0
+  FileOpen $0 "$COMMONAPPDATA\\${APP_NAME}\\checkin-logs" w
   FileClose $0
+
+  nsExec::ExecToLog '"$SYSDIR\\icacls.exe" "$COMMONAPPDATA\\${APP_NAME}\\checkin-logs" /grant "Users:(M)" /Q'
+
+  ; Write the scheduled task as XML to avoid path-with-spaces quoting issues.
+  ; Battery flags are false so the task runs regardless of power state.
+  StrCpy $R3 "$TEMP\\t766-task.xml"
+  FileOpen $9 "$R3" w
+  FileWrite $9 '<?xml version="1.0" encoding="UTF-16"?>'
+  FileWrite $9 '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">'
+  FileWrite $9 '<Principals><Principal id="Author"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>'
+  FileWrite $9 '<Settings><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy></Settings>'
+  FileWrite $9 '<Triggers><BootTrigger><Delay>PT2S</Delay></BootTrigger></Triggers>'
+  FileWrite $9 '<Actions Context="Author"><Exec><Command>$INSTDIR\\T766-ControlClient.exe</Command></Exec></Actions>'
+  FileWrite $9 '</Task>'
+  FileClose $9
+
+  nsExec::ExecToStack '"$SYSDIR\\schtasks.exe" /Create /F /TN "${APP_NAME}\\T766-ControlClient" /XML "$R3" /RU SYSTEM'
+  Pop $R0
+  Pop $R1
+  Delete "$R3"
+  IntCmp $R0 0 schtasks_ok schtasks_fail schtasks_fail
+  schtasks_fail:
+    MessageBox MB_OK "WARNING: Failed to create scheduled task. Exit code: $R0 Output: $R1"
+  schtasks_ok:
+
+  CreateShortCut "$SMSTARTUP\\T766-CheckinApp.lnk" "$INSTDIR\\T766-CheckinApp.exe"
 
   Delete "$DESKTOP\\${APP_NAME}.lnk"
   Delete "$DESKTOP\\T766-ControlClient.lnk"
+  Delete "$DESKTOP\\T766-CheckinApp.lnk"
 
-  WriteRegStr HKCU "Software\\T766\\Control" "InstallPath" "$INSTDIR"
+  WriteRegStr HKLM "Software\\T766\\Control" "InstallPath" "$INSTDIR"
 SectionEnd
 
-Section "un.RemoveFromStartup"
-  nsExec::ExecToStack 'schtasks /Delete /F /TN "${APP_NAME}\\T766-ControlClient"'
-  nsExec::ExecToStack 'schtasks /Delete /F /TN "${APP_NAME}\\T766-CheckinApp"'
+Section un.T766Cleanup
+  nsExec::ExecToLog '"$SYSDIR\\schtasks.exe" /Delete /F /TN "${APP_NAME}\\T766-ControlClient"'
 
-  DeleteRegKey HKCU "Software\\T766\\Control"
+  Delete "$SMSTARTUP\\T766-CheckinApp.lnk"
 
-  MessageBox MB_YESNO "Do you want to remove application settings & logs?" IDNO +7
-  Delete "$LOCALAPPDATA\\${APP_NAME}\\checkin-logs"
-  Delete "$LOCALAPPDATA\\${APP_NAME}\\old-checkin-logs"
-  Delete "$LOCALAPPDATA\\${APP_NAME}\\settings.toml"
-  Delete "$LOCALAPPDATA\\${APP_NAME}\\last_run.txt"
-  Delete "$LOCALAPPDATA\\${APP_NAME}\\client.log"
-  Delete "$LOCALAPPDATA\\${APP_NAME}\\client.old.log"
-  RMDir "$LOCALAPPDATA\\${APP_NAME}"
+  DeleteRegKey HKLM "Software\\T766\\Control"
+
+  MessageBox MB_YESNO "Do you want to remove application settings & logs?" IDNO +8
+  Delete "$COMMONAPPDATA\\${APP_NAME}\\checkin-logs"
+  Delete "$COMMONAPPDATA\\${APP_NAME}\\old-checkin-logs"
+  Delete "$COMMONAPPDATA\\${APP_NAME}\\settings.toml"
+  Delete "$COMMONAPPDATA\\${APP_NAME}\\last_run.txt"
+  Delete "$COMMONAPPDATA\\${APP_NAME}\\client.log"
+  Delete "$COMMONAPPDATA\\${APP_NAME}\\client.old.log"
+  RMDir "$COMMONAPPDATA\\${APP_NAME}"
 SectionEnd
 """
