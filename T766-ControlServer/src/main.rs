@@ -42,6 +42,7 @@ async fn main() {
     let router = axum::Router::new()
         .nest_service("/data", ServeDir::new("/puppet"))
         .route("/data/hashes/{filename}", axum::routing::get(hash_handler))
+        .route("/manifests", axum::routing::get(manifests_handler))
         .serve_dioxus_application(dioxus_server::ServeConfig::new(), App);
 
     let router = router.into_make_service();
@@ -455,5 +456,27 @@ fn LogEntry(log: PuppetStatus) -> Element {
                   }
               }
         }
+    }
+}
+
+#[cfg(feature = "server")]
+async fn manifests_handler() -> impl axum::response::IntoResponse {
+    use axum::response::IntoResponse;
+    match tokio::task::spawn_blocking(|| -> std::io::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        let mut archive = tar::Builder::new(&mut buf);
+        archive.append_dir_all("manifests", "/puppet/manifests")?;
+        archive.finish()?;
+        drop(archive);
+        Ok(buf)
+    }).await {
+        Ok(Ok(bytes)) => (
+            [(axum::http::header::CONTENT_TYPE, "application/x-tar")],
+            bytes,
+        ).into_response(),
+        _ => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to build archive",
+        ).into_response(),
     }
 }

@@ -46,7 +46,7 @@ pub struct SyncTableData {
 }
 
 fn load_people_map() -> HashMap<String, String> {
-    let file = match File::open("/home/team766/web/people.csv") {
+    let file = match File::open("/opt/puppet/people.csv") {
         Ok(f) => f,
         Err(_) => return HashMap::new(),
     };
@@ -427,48 +427,4 @@ pub async fn get_logs_for_interval(
     interval_syncs.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
     Ok(interval_syncs)
-}
-
-#[get("/manifests")]
-pub async fn get_manifests() -> Result<ByteStream, ServerFnError> {
-    let (send, recv) = mpsc::sync_channel::<Vec<u8>>(8);
-
-    std::thread::spawn(move || {
-        struct ChannelWriter {
-            sender: std::sync::mpsc::SyncSender<Vec<u8>>,
-        }
-
-        impl std::io::Write for ChannelWriter {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                self.sender.send(buf.to_vec()).map_err(|_| {
-                    std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Channel closed")
-                })?;
-                Ok(buf.len())
-            }
-
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-
-        let writer = ChannelWriter { sender: send };
-        let mut archive = Builder::new(writer);
-
-        if let Err(e) = archive.append_dir_all("manifests", "/puppet/manifests") {
-            eprintln!("Error adding manifests to archive: {}", e);
-            return;
-        }
-
-        if let Err(e) = archive.finish() {
-            eprintln!("Error finishing archive: {}", e);
-        }
-    });
-
-    Ok(ByteStream::spawn(move |tx| async move {
-        while let Ok(chunk) = recv.recv() {
-            if tx.unbounded_send(chunk.into()).is_err() {
-                break;
-            }
-        }
-    }))
 }
