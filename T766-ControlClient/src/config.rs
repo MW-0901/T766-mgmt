@@ -15,17 +15,18 @@ pub struct ClientConfig {
 macro_rules! conf_file {
     ($filename:expr) => {
         if os() == "windows" {
+            let base = std::env::var("PROGRAMDATA")
+                .unwrap_or_else(|_| r"C:\ProgramData".to_string());
             [
-                PathBuf::from(format!(r"C:\ProgramData\T766 Control System\{}", $filename)),
+                PathBuf::from(format!(r"{}\T766 Control System\{}", base, $filename)),
                 std::env::current_exe()
                     .ok()
                     .and_then(|p| p.parent().map(|p| p.join($filename)))
                     .unwrap_or_default(),
-                PathBuf::from(format!(r"C:\Program Files\T766 Control System\{}", $filename)),
             ]
             .into_iter()
             .find(|p| p.exists())
-            .unwrap_or_else(|| PathBuf::from(format!(r"C:\ProgramData\T766 Control System\{}", $filename)))
+            .unwrap_or_else(|| PathBuf::from(format!(r"{}\T766 Control System\{}", base, $filename)))
         } else {
             PathBuf::from(format!("/etc/t766/{}", $filename))
         }
