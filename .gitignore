@@ -3,3 +3,5 @@ T766-ControlServer/cn-db.redb
 target/
 *.exe
 .cargo-packager/
+build/
+result
