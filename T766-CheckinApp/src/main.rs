@@ -25,11 +25,16 @@ fn submit_id(ui: &AppWindow, id: String) -> bool {
     }
 
     let path = if cfg!(windows) {
-        let user = std::env::var("USERNAME").unwrap_or_else(|_| "Default".to_string());
-        PathBuf::from(format!(r"C:\Users\{}\AppData\Local\T766 Control System\checkin-logs", user))
+        let base = std::env::var("PROGRAMDATA")
+            .unwrap_or_else(|_| r"C:\ProgramData".to_string());
+        PathBuf::from(format!(r"{}\T766 Control System\checkin-logs", base))
     } else {
         PathBuf::from("/etc/t766/checkin-logs")
     };
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
 
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
     let entry = format!("{} - {}\n\n\n", timestamp, id);

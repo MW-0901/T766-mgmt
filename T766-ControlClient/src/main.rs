@@ -10,28 +10,15 @@ use chrono::{Local, DateTime, Timelike, Duration};
 use std::{thread, fs, path::PathBuf, sync::Arc, sync::atomic::{AtomicBool, Ordering}};
 use std::process::exit;
 use log::{info, error, warn};
-use config::log_path;
-use crate::host::os;
+use config::{log_path, state_file};
 
 const CATCH_UP_WINDOW_MINUTES: i64 = 15;
 const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 const MIN_BACKOFF_SECONDS: u64 = 30;
 const MAX_BACKOFF_SECONDS: u64 = 300;
 
-fn get_state_file() -> Result<PathBuf, String> {
-    let state_dir = if os() == "windows" {
-        PathBuf::from(r"C:\ProgramData\T766 Control System")
-    } else {
-        PathBuf::from("/etc/t766")
-    };
-
-    fs::create_dir_all(&state_dir)
-        .map_err(|e| format!("Failed to create state directory: {}", e))?;
-    Ok(state_dir.join("last_run.txt"))
-}
-
 fn load_last_run() -> Option<DateTime<Local>> {
-    let path = get_state_file().ok()?;
+    let path = state_file();
     let content = fs::read_to_string(&path).ok()?;
     let timestamp = content.trim().parse::<i64>().ok()?;
     let dt = DateTime::from_timestamp(timestamp, 0)?;
@@ -46,7 +33,11 @@ fn load_last_run() -> Option<DateTime<Local>> {
 }
 
 fn save_last_run(time: DateTime<Local>) -> Result<(), String> {
-    let path = get_state_file()?;
+    let path = state_file();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create state directory: {}", e))?;
+    }
     let temp_path = path.with_extension("tmp");
 
     fs::write(&temp_path, time.timestamp().to_string())
