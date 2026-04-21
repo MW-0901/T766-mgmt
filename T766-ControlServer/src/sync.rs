@@ -36,12 +36,11 @@ fn interval_index(timestamp: &str) -> Option<i64> {
 
 /// Format an interval index as a display string.
 #[cfg(feature = "server")]
-fn format_interval(idx: i64) -> String {
-    chrono::DateTime::from_timestamp(idx * 15 * 60, 0)
-        .unwrap()
+fn format_interval(idx: i64) -> Option<String> {
+    Some(chrono::DateTime::from_timestamp(idx * 15 * 60, 0)?
         .with_timezone(&Local)
         .format("%-I:%M %p %-m-%-d-%y")
-        .to_string()
+        .to_string())
 }
 
 /// Ingest a puppet sync report.
@@ -91,10 +90,10 @@ pub async fn get_sync_table() -> Result<SyncTableData, ServerFnError> {
     interval_indices.reverse();
     interval_indices.truncate(20);
 
-    let times: Vec<String> = interval_indices.iter().map(|idx| format_interval(*idx)).collect();
+    let times: Vec<String> = interval_indices.iter().filter_map(|idx| format_interval(*idx)).collect();
     let mut syncs = HashMap::new();
     for idx in &interval_indices {
-        let display = format_interval(*idx);
+        let Some(display) = format_interval(*idx) else { continue };
         let hosts: HashMap<String, String> = by_interval.iter()
             .filter(|((i, _), _)| i == idx)
             .map(|((_, h), (_, st))| (h.clone(), st.clone()))
@@ -120,7 +119,8 @@ pub async fn get_logs_for_interval(
         .filter(|s| {
             s.hostname == hostname
                 && interval_index(&s.timestamp)
-                    .map(|idx| format_interval(idx) == time)
+                    .and_then(|idx| format_interval(idx))
+                    .map(|display| display == time)
                     .unwrap_or(false)
         })
         .collect();

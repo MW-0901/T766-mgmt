@@ -77,9 +77,19 @@ impl PuppetClient {
     }
 
     fn apply_dir(&self, manifest_dir: &Path) -> ApplyResult {
-        let result = Self::build_puppet_command(manifest_dir)
-            .output()
-            .unwrap_or_else(|e| panic!("Failed to run puppet apply {:?}: {}", manifest_dir, e));
+        let result = match Self::build_puppet_command(manifest_dir).output() {
+            Ok(r) => r,
+            Err(e) => {
+                warn!("Failed to run puppet apply {:?}: {}", manifest_dir, e);
+                return ApplyResult {
+                    hostname: hostname(),
+                    status: "failure".to_string(),
+                    exit_code: -1,
+                    logs: format!("Failed to run puppet apply: {}", e),
+                    checkin_logs: Vec::new(),
+                };
+            }
+        };
 
         let logs = format!(
             "{}{}",
@@ -89,7 +99,11 @@ impl PuppetClient {
 
         let exit_code = result.status.code().unwrap_or(-1);
         let checkin = match checkin_logs() {
-            Ok(logs) | Err(logs) => logs,
+            Ok(logs) => logs,
+            Err(e) => {
+                warn!("Failed to read checkin logs: {:?}", e);
+                Vec::new()
+            }
         };
 
         if let Err(e) = clear_logs() {

@@ -76,8 +76,11 @@ impl Client {
         if log.len() <= MAX_LOG_BYTES {
             return log.to_string();
         }
-        let truncated = &log[log.len() - MAX_LOG_BYTES..];
-        format!("[...truncated...]\n{}", truncated)
+        let mut start = log.len() - MAX_LOG_BYTES;
+        while !log.is_char_boundary(start) {
+            start += 1;
+        }
+        format!("[...truncated...]\n{}", &log[start..])
     }
 
     pub fn send_status(&self, mut status: ApplyResult) -> Result<String, String> {
