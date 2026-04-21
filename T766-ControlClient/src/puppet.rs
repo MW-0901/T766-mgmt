@@ -1,5 +1,6 @@
 use crate::client::Client;
 use crate::host::{hostname, os};
+use std::path::Path;
 use std::process::Command;
 use log::{info, warn};
 use serde::Serialize;
@@ -28,23 +29,30 @@ impl PuppetClient {
     pub fn apply(&self) -> Result<String, String> {
         info!("Fetching manifests...");
         let dir = self.client.manifests()?;
-        let dir_name = dir.path().to_str().unwrap();
+
         info!("Applying manifests...");
-        let result = self.apply_dir(dir_name);
+        let manifest_path = dir.path().join("manifests");
+        let result = self.apply_dir(&manifest_path);
+
         info!("Returning status to server...");
         self.client.send_status(result)
     }
 
-    fn build_puppet_command(dir_name: &str) -> Command {
-        let module_path = format!("{}/modules", dir_name);
+    fn build_puppet_command(manifest_dir: &Path) -> Command {
+        let module_path = manifest_dir.parent()
+            .map(|p| p.join("modules"))
+            .unwrap_or_else(|| manifest_dir.join("modules"));
 
-        let mut command = if os() == "windows" {
+        let manifest_str = manifest_dir.to_string_lossy();
+        let module_str = module_path.to_string_lossy();
+
+        let command = if os() == "windows" {
             let mut cmd = Command::new("cmd");
             cmd.args([
                 "/C", "puppet", "apply",
                 "--color=false",
-                "--modulepath", &module_path,
-                dir_name
+                "--modulepath", &module_str,
+                &manifest_str,
             ]);
             cmd
         } else {
@@ -52,8 +60,8 @@ impl PuppetClient {
             cmd.args([
                 "apply",
                 "--color=false",
-                "--modulepath", &module_path,
-                dir_name
+                "--modulepath", &module_str,
+                &manifest_str,
             ]);
             cmd
         };
@@ -68,11 +76,10 @@ impl PuppetClient {
         command
     }
 
-    fn apply_dir(&self, dir_name: &str) -> ApplyResult {
-        let manifest_path = format!("{}/manifests", dir_name);
-        let result = Self::build_puppet_command(manifest_path.as_str())
+    fn apply_dir(&self, manifest_dir: &Path) -> ApplyResult {
+        let result = Self::build_puppet_command(manifest_dir)
             .output()
-            .unwrap_or_else(|_| panic!("Failed to run puppet apply {}", dir_name));
+            .unwrap_or_else(|e| panic!("Failed to run puppet apply {:?}: {}", manifest_dir, e));
 
         let logs = format!(
             "{}{}",
@@ -81,11 +88,15 @@ impl PuppetClient {
         );
 
         let exit_code = result.status.code().unwrap_or(-1);
-        let checkin_logs = match checkin_logs() {
+        let checkin = match checkin_logs() {
             Ok(logs) | Err(logs) => logs,
         };
 
-        let apply_result = ApplyResult {
+        if let Err(e) = clear_logs() {
+            warn!("Failed to clear checkin logs: {}", e);
+        }
+
+        ApplyResult {
             hostname: hostname(),
             status: if result.status.success() {
                 "success".to_string()
@@ -96,13 +107,7 @@ impl PuppetClient {
             },
             exit_code,
             logs,
-            checkin_logs,
-        };
-
-        if let Err(e) = clear_logs() {
-            warn!("Failed to clear checkin logs: {}", e);
+            checkin_logs: checkin,
         }
-
-        apply_result
     }
 }

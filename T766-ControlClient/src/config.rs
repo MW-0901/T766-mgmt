@@ -41,6 +41,10 @@ fn conf_path() -> PathBuf {
     conf_file!("settings.toml")
 }
 
+pub fn state_file() -> PathBuf {
+    conf_file!("last_run.txt")
+}
+
 pub fn checkin_logs() -> Result<Vec<String>, Vec<String>> {
     let path = conf_file!("checkin-logs");
     let file = fs::read_to_string(&path)

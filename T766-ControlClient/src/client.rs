@@ -13,66 +13,63 @@ static CONFIG: LazyLock<ClientConfig> = LazyLock::new(|| {
     load_config().expect("failed to load config")
 });
 
-pub struct Client {}
+pub struct Client;
 
 impl Client {
     pub fn new() -> Self {
-        Client {}
+        Client
     }
 
-    fn req_manifests(&self) -> Result<Vec<u8>, String> {
-        let url_one = format!("{}manifests", CONFIG.primary_url);
-        let url_two = format!("{}manifests", CONFIG.fallback_url);
-        info!("{}", url_one);
-        match minreq::get(&url_one)
+    /// Try a request against the primary URL, then fall back to the fallback URL.
+    fn request_with_fallback<F, T>(&self, make_request: F) -> Result<T, String>
+    where
+        F: Fn(&str) -> Result<T, String>,
+    {
+        match make_request(&CONFIG.primary_url) {
+            Ok(v) => return Ok(v),
+            Err(e) => error!("Primary connection failed: {}", e),
+        }
+        info!("Falling back to remote control node...");
+        make_request(&CONFIG.fallback_url)
+            .map_err(|e| { error!("Fallback connection failed: {}", e); e })
+    }
+
+    fn http_get(url: &str) -> Result<Vec<u8>, String> {
+        let response = minreq::get(url)
             .with_header("Accept-Encoding", "identity")
             .with_timeout(20)
             .send()
-        {
-            Ok(response) => {
-                if response.status_code != 200 {
-                    error!("Non-200 status code returned: {}", response.status_code);
-                    return Err(format!("status code {} found", response.status_code));
-                }
-                return Ok(response.into_bytes())
-            },
-            Err(err) => {
-                error!("Local control node connection failed: {}", err);
-            }
+            .map_err(|e| e.to_string())?;
+        if response.status_code != 200 {
+            return Err(format!("status code {}", response.status_code));
         }
+        Ok(response.into_bytes())
+    }
 
-        info!("Falling back to remote control node...");
-        let response = minreq::get(&url_two)
+    fn http_post(url: &str, body: &str) -> Result<String, String> {
+        let response = minreq::post(url)
             .with_header("Accept-Encoding", "identity")
             .with_timeout(20)
-            .send();
-
-        match response {
-            Ok(response) => {
-                if response.status_code != 200 {
-                    error!("Non-200 status code returned: {}", response.status_code);
-                    return Err(format!("status code {} found", response.status_code));
-                }
-                Ok(response.into_bytes())
-            },
-            Err(err) => {
-                error!("VPS connection failed: {}", err);
-                Err(err.to_string())
-            }
-        }
+            .with_body(body)
+            .send()
+            .map_err(|e| e.to_string())?;
+        Ok(String::from_utf8_lossy(&response.into_bytes()).into_owned())
     }
 
     pub fn manifests(&self) -> Result<TempDir, String> {
-        let tarball = self.req_manifests()?;
+        let tarball = self.request_with_fallback(|base| {
+            let url = format!("{}manifests", base);
+            info!("{}", url);
+            Self::http_get(&url)
+        })?;
+
         let temp_dir = TempDir::new().map_err(|e| e.to_string())?;
-        let cursor = Cursor::new(&tarball);
-        let mut archive = Archive::new(cursor);
-        match archive.unpack(temp_dir.path()).map_err(|e| e.to_string()) {
-            Ok(_) => Ok(temp_dir),
-            Err(err) => {
-                Err(format!("Error opening tarball: {err}\nServer response: {:?}", String::from_utf8_lossy(&tarball)))
-            }
-        }
+        let mut archive = Archive::new(Cursor::new(&tarball));
+        archive.unpack(temp_dir.path()).map_err(|e| {
+            format!("Error opening tarball: {e}\nServer response: {:?}",
+                    String::from_utf8_lossy(&tarball))
+        })?;
+        Ok(temp_dir)
     }
 
     fn truncate_log(log: &str) -> String {
@@ -90,34 +87,11 @@ impl Client {
             .map(|l| Self::truncate_log(&l))
             .collect();
 
-        let url_one = format!("{}puppet-sync", CONFIG.primary_url);
-        let url_two = format!("{}puppet-sync", CONFIG.fallback_url);
-        let body = serde_json::to_string(&status)
-            .map_err(|e| e.to_string())?;
-        match minreq::post(&url_one)
-            .with_header("Accept-Encoding", "identity")
-            .with_timeout(20)
-            .with_body(body.clone())
-            .send()
-        {
-            Ok(response) => return Ok(String::from_utf8_lossy(&response.into_bytes()).into_owned()),
-            Err(err) => {
-                error!("Local control node connection failed: {}", err);
-            }
-        }
+        let body = serde_json::to_string(&status).map_err(|e| e.to_string())?;
 
-        let response = minreq::post(&url_two)
-            .with_header("Accept-Encoding", "identity")
-            .with_timeout(20)
-            .with_body(body)
-            .send();
-
-        match response {
-            Ok(response) => Ok(String::from_utf8_lossy(&response.into_bytes()).into_owned()),
-            Err(err) => {
-                error!("VPS connection failed: {}", err);
-                Err(err.to_string())
-            }
-        }
+        self.request_with_fallback(|base| {
+            let url = format!("{}puppet-sync", base);
+            Self::http_post(&url, &body)
+        })
     }
 }
